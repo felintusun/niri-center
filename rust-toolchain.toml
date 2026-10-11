@@ -1,0 +1,7 @@
+[toolchain]
+# Pinned: the clippy gate runs with -D warnings, and clippy's
+# lints change between releases. Bump deliberately, with `just check` green.
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+# the browser demo (README, GitHub Pages)
+targets = ["wasm32-unknown-unknown"]

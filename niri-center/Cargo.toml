@@ -1,0 +1,44 @@
+[package]
+name = "niri-center"
+description = "The library behind niri-center: lossless niri config editing, saving with history, niri IPC, validation."
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+tempfile = "3"
+# niri parses colors with this crate and version, so fields accept exactly what niri does
+csscolorparser = "0.8"
+# niri reads window-rule `match` patterns with this crate: the Rules page
+# runs them the same way to tell which rules reach a window
+regex = "1.11"
+# the name a misspelled one was meant to be (already here through clap)
+strsim = "0.11"
+
+# niri's socket, its event stream and the action catalog: not in the browser
+# demo, where `bindings::CATALOG` stands in for the catalog
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+niri-ipc.workspace = true
+tokio = { version = "1", features = ["sync", "rt"] }
+clap = { version = "4", default-features = false, features = ["std"] }
+# times in the history, and screenshot names expanded the way niri does
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# xdg-desktop-portal: the file chooser behind Browse, the contrast preference
+ashpd = { version = "0.13", default-features = false, features = ["tokio", "file_chooser", "settings"] }
+futures-util = { version = "0.3", default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1.1"
+# the actors' channels; their loops run on the browser's executor
+tokio = { version = "1", default-features = false, features = ["sync"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
+# `?page=displays` in the demo's address opens that page; prefers-contrast
+web-sys = { version = "0.3", features = ["Window", "Location", "MediaQueryList"] }

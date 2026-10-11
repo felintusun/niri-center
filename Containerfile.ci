@@ -1,0 +1,20 @@
+# The image CI's tests run in: niri, so the tests ask `niri validate` as the
+# app does, the Rust toolchain of rust-toolchain.toml, and a font for the
+# headless UI tests to lay text out with. CI tags it by the
+# hash of this file and rust-toolchain.toml (CI_IMAGE_TAG in
+# .github/workflows/ci.yml) and builds it when the registry lacks that tag.
+#
+# Arch packages niri at the version niri-ipc is pinned to. Packages come from
+# the Arch Linux Archive's snapshot of the base image's day, so a rebuild
+# installs the same versions; to update, move both dates together.
+
+FROM docker.io/library/archlinux:base-devel-20261004.0.606936
+RUN echo 'Server = https://archive.archlinux.org/repos/2026/10/04/$repo/os/$arch' > /etc/pacman.d/mirrorlist \
+    && pacman -Syyu --noconfirm --needed niri rustup git ttf-dejavu \
+    && pacman -Scc --noconfirm
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+COPY rust-toolchain.toml /toolchain/rust-toolchain.toml
+RUN cd /toolchain && rustup toolchain install && rustup show active-toolchain

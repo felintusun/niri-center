@@ -1,0 +1,79 @@
+[package]
+name = "niri-center-ui"
+description = "Lightweight settings GUI for the niri Wayland compositor."
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+# the window, as a library so wasm-pack can build the browser demo from it
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "niri-center"
+path = "src/main.rs"
+# the library is niri_center too: one set of docs per name
+doc = false
+
+[lints]
+workspace = true
+
+[dependencies]
+niri-center.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+iced = { workspace = true, features = [
+    "wgpu",
+    "tiny-skia",
+    "crisp",
+    "web-colors",
+    "thread-pool",
+    "linux-theme-detection",
+    "x11",
+    "wayland",
+    "tokio",
+    "canvas",
+    "advanced",
+] }
+# iced's executor: blocking work goes to its blocking pool, the wait before
+# a save is a timer on it, and the actors' channels
+tokio = { version = "1", features = ["rt", "time", "sync"] }
+
+# the browser demo: WebGPU, else WebGL (Firefox on Linux; Chrome on Linux
+# offers WebGPU without an adapter), else drawn in software into a 2D
+# canvas; iced picks at start. Fonts are built in since a browser lends none.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+iced = { workspace = true, features = [
+    "wgpu",
+    "webgl",
+    "tiny-skia",
+    "crisp",
+    "web-colors",
+    "fira-sans",
+    "canvas",
+    "advanced",
+] }
+# the browser's timer, which iced's own uses
+wasmtimer = "0.4.2"
+# the demo's entry point (`start` in lib.rs)
+wasm-bindgen = "0.2"
+# the actors' channels
+tokio = { version = "1", default-features = false, features = ["sync"] }
+
+[dev-dependencies]
+iced_test = "0.14.0"
+tempfile = "3"
+
+# wasm-pack's wasm-opt (binaryen 117) after the web profile: it must be told
+# the wasm features rustc emits, SIMD among them
+[package.metadata.wasm-pack.profile.custom]
+wasm-opt = [
+    "-Os",
+    "--enable-simd",
+    "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int",
+    "--enable-sign-ext",
+    "--enable-mutable-globals",
+    "--enable-reference-types",
+    "--enable-multivalue",
+]

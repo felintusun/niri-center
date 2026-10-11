@@ -1,0 +1,62 @@
+[workspace]
+resolver = "2"
+members = ["niri-center", "niri-center-ui"]
+# One library, one app. `niri-center` is everything that does not draw:
+# the config, saving and its history, the settings table, what niri and
+# the system report. `niri-center-ui` draws it with iced and builds the
+# `niri-center` binary, so bare `cargo run` starts the GUI; `--workspace`
+# is passed explicitly everywhere (justfile, CI) for the rest.
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/felintusun/niri-center"
+
+[workspace.dependencies]
+niri-center = { path = "niri-center", version = "0.1.0" }
+niri-ipc = { version = "=26.4.0", features = ["clap"] } # pinned to niri 26.04 (see CONTRIBUTING.md); clap: the action catalog
+thiserror = "2"
+tracing = "0.1"
+# features per target in niri-center: the browser demo leaves out the Linux ones
+iced = { version = "0.14", default-features = false }
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
+# The browser demo: every byte is downloaded before the app shows, and the
+# GPU draws the frames (opt-level 3 made the download 9% bigger for no
+# faster frame).
+[profile.web]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+# The software renderer, for a browser with neither WebGPU nor WebGL: its
+# pixel and glyph loops at full speed halve a frame for 30 KB more download.
+[profile.web.package.tiny-skia]
+opt-level = 3
+[profile.web.package.tiny-skia-path]
+opt-level = 3
+[profile.web.package.iced_tiny_skia]
+opt-level = 3
+[profile.web.package.softbuffer]
+opt-level = 3
+[profile.web.package.swash]
+opt-level = 3
+[profile.web.package.skrifa]
+opt-level = 3
+[profile.web.package.read-fonts]
+opt-level = 3
+[profile.web.package.cosmic-text]
+opt-level = 3
+
+# Defensive programming lints (corrode.dev/blog/defensive-programming):
+# put the compiler to work instead of relying on discipline.
+[workspace.lints.clippy]
+wildcard_enum_match_arm = "deny"   # force new enum variants to be handled
+fallible_impl_from = "deny"        # From must never truncate/panic; use TryFrom
+unneeded_field_pattern = "deny"    # no silent field skipping via `..`
+fn_params_excessive_bools = "deny" # >4 booleans at a call site = bug magnet

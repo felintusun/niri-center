@@ -1,0 +1,4 @@
+# The browser demo: wasm SIMD, which tiny-skia's pixel loops use in a browser
+# with neither WebGPU nor WebGL (every major browser has SIMD since 2023).
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]

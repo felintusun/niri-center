@@ -1,0 +1,57 @@
+name: Demo
+
+# Builds the browser demo (the app itself, compiled to wasm, on niri's
+# default config) and publishes it with GitHub Pages. Turn Pages on under
+# Settings, Pages, Source: GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Actions are pinned to commits (the tag in each comment). Only the deploy
+# job may publish to Pages.
+permissions: {}
+
+# one publish at a time; a newer push waits rather than cutting a deploy short
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the demo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # installs the channel, components and wasm target in rust-toolchain.toml
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # wasm-pack fetches the wasm-bindgen matching Cargo.lock and binaryen
+      - run: cargo install wasm-pack --version 0.15.0 --locked
+      - name: Build the site
+        run: |
+          wasm-pack build niri-center-ui --target web --profile web \
+            --no-typescript --no-pack --out-dir ../site --out-name niri-center
+          cp niri-center-ui/web/index.html site/
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    name: Publish to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write # deploy-pages publishes the built site
+      id-token: write # and proves to Pages, over OIDC, that this workflow asks
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

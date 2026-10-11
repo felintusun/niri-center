@@ -1,0 +1,4 @@
+/target
+.claude/settings.local.json
+# Cargo.lock is committed: this is an application workspace (not a library)
+# distributed with pinned, reproducible dependency versions.

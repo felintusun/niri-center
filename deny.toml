@@ -1,0 +1,51 @@
+# cargo-deny configuration for niri-center.
+# Docs: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# niri is Linux-only, but iced's backend crates reference other platforms in
+# their full-resolved graphs; this keeps the graph focused on what we build.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+]
+
+[advisories]
+# Accepted `cargo audit` warning. Transitive, version-pinned by iced 0.14's
+# rendering stack, with no upgraded release that fixes it:
+# - RUSTSEC-2026-0192 (ttf-parser, unmaintained): tiny, API-stable font parser
+#   pulled in by cosmic-text/fontdb; still receives security fixes upstream.
+ignore = [
+  { id = "RUSTSEC-2026-0192", reason = "unmaintained-status advisory; pinned by cosmic-text/fontdb, security fixes still shipped" },
+]
+
+[licenses]
+# Our own license is GPL-3.0-or-later (inherited from niri-ipc). Everything
+# else in the graph is standard permissive — see `cargo deny list` for the
+# full inventory. Dual-license `OR` expressions (e.g. self_cell's
+# "Apache-2.0 OR GPL-2.0-only") resolve against this allowlist: a single
+# allowed alternative satisfies them.
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "CC0-1.0",
+  "ISC",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+  "GPL-3.0-or-later", # our own license + niri-ipc
+]
+# (No `deny`/`copyleft` keys: cargo-deny ≥0.19 dropped them; any license not in
+# the allow list above is rejected outright. The project itself is
+# intentionally GPL-3.0-or-later, which is allowed.)
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

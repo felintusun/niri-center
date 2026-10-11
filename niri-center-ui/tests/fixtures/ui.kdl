@@ -1,0 +1,72 @@
+// UI test fixture: one config that puts something on every page —
+// outputs, layout, input, animations, binds (incl. a disabled
+// one and a long spawn line), autostart and a window rule. Must pass
+// `niri validate`.
+
+output "DP-1" {
+    mode "2560x1440@165.001"
+    scale 1.0
+    position x=1707 y=0
+}
+
+output "eDP-1" {
+    scale 1.5
+    position x=0 y=0
+}
+
+layout {
+    gaps 12
+    center-focused-column "never"
+}
+
+input {
+    keyboard {
+        xkb {
+            layout "de,us"
+        }
+        numlock
+    }
+    touchpad {
+        tap
+    }
+}
+
+animations {
+    window-open {
+        spring damping-ratio=0.8 stiffness=1000 epsilon=0.0001
+    }
+    workspace-switch {
+        duration-ms 250
+        curve "ease-out-cubic"
+    }
+}
+
+binds {
+    Mod+Shift+Slash { show-hotkey-overlay; }
+    Mod+T hotkey-overlay-title="Open a Terminal: kitty" { spawn "kitty"; }
+    Mod+D { spawn "fuzzel"; }
+    Mod+N { spawn "sh" "-c" "notify-send hello"; }
+    Mod+Q { close-window; }
+    Mod+H { focus-column-left; }
+    Mod+L { focus-column-right; }
+    Mod+Shift+H { move-column-left; }
+    Mod+Shift+L { move-column-right; }
+    Mod+F { maximize-column; }
+    Mod+Shift+F { fullscreen-window; }
+    Mod+V { toggle-window-floating; }
+    Mod+1 { focus-workspace 1; }
+    Mod+2 { focus-workspace 2; }
+    Mod+Shift+Q { quit; }
+    /- Mod+Shift+E { quit; }
+    XF86AudioRaiseVolume allow-when-locked=true { spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1+ -l 1.0 && notify-send -t 800 -h int:value:$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{print int($2*100)}') Volume"; }
+    Print { screenshot; }
+}
+
+spawn-at-startup "waybar"
+spawn-sh-at-startup "swayidle -w timeout 300 'niri msg action power-off-monitors'"
+/- spawn-at-startup "nm-applet"
+
+window-rule {
+    match app-id="firefox$" title="^Picture-in-Picture$"
+    open-floating true
+}

@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Actions are pinned to commits (the tag in each comment). Every job reads
+# the repository; the image job also writes this repository's test image to
+# its container registry.
+permissions: {}
+
+# a newer push to the same branch or pull request supersedes a running check
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # headless UI tests (iced_test): the software renderer needs no GPU
+  ICED_TEST_BACKEND: tiny-skia
+  # The test image's tag: the first 12 hex digits of the sha256 of
+  # Containerfile.ci and rust-toolchain.toml, in that order. The image job
+  # fails while it is stale.
+  CI_IMAGE_TAG: "a00b69c44f94"
+
+jobs:
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # installs the channel + components pinned in rust-toolchain.toml
+      - run: rustup toolchain install
+      - run: cargo fmt --check
+
+  # The image the tests run in (Containerfile.ci): built and pushed only
+  # when the registry lacks this tag.
+  image:
+    name: Test image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # pushes the test image when it is new
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the tag
+        run: |
+          tag=$(cat Containerfile.ci rust-toolchain.toml | sha256sum | cut -c1-12)
+          if [ "$tag" != "$CI_IMAGE_TAG" ]; then
+            echo "::error::CI_IMAGE_TAG is $CI_IMAGE_TAG; Containerfile.ci and rust-toolchain.toml give $tag"
+            exit 1
+          fi
+      - name: Build and push it unless the registry has it
+        id: image
+        env:
+          TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          image="ghcr.io/$REPOSITORY/ci:$CI_IMAGE_TAG"
+          echo "$TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          if docker manifest inspect "$image" > /dev/null 2>&1; then
+            echo "$image: in the registry already"
+          else
+            docker build --file Containerfile.ci --tag "$image" .
+            docker push "$image"
+          fi
+          # the tests run in exactly this image: the tag resolved to its digest
+          digest=$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "image=$image@$digest" >> "$GITHUB_OUTPUT"
+          docker logout ghcr.io
+
+  check:
+    name: Clippy and tests
+    needs: image
+    runs-on: ubuntu-latest
+    # niri for `niri validate`, the pinned toolchain and a font
+    container:
+      # pinned: the image job hands over tag@digest of the image it checked
+      image: ${{ needs.image.outputs.image }} # zizmor: ignore[unpinned-images]
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+    permissions:
+      contents: read
+      packages: read # pulls the test image
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # The Landlock self-sandbox test skips when the runner kernel lacks
+      # Landlock.
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # the browser demo builds from the same code; keep it compiling
+      - run: cargo clippy -p niri-center-ui --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo test --workspace
+
+  deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+
+  # `just audit`'s cargo audit, run as is rather than through an action
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+
+  # zizmor audits these workflows. The action installs a hash-pinned zizmor
+  # wheel (nothing compiled), annotates pull requests instead of uploading
+  # to the Security tab (which would need write access), and uses the
+  # read-only job token for the online audits.
+  zizmor:
+    name: Workflow security (zizmor)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false
+          annotations: true
+          persona: auditor

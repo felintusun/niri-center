@@ -1,0 +1,63 @@
+// Realistic niri config exercising the shapes the tools must survive:
+// comments, blank lines, one-node-per-line, nested blocks, foreign blocks
+// (Noctalia-style), and multi-arg nodes.
+
+// This is my daily driver — don't mess with the comments
+
+// outputs ---------------------------------------------------------
+output "DP-1" {
+    mode "2560x1440@165.001"
+    scale 1.0
+    position x=2560 y=0
+    variable-refresh-rate on-demand=true /* keep this */
+}
+
+output "eDP-1" {
+    scale 1.5
+    position x=0 y=0
+    focus-at-startup
+}
+
+// layout -----------------------------------------------------------------
+layout {
+    gaps 12
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+    }
+    focus-ring {
+        width 2
+    }
+}
+
+// hot corners
+gestures {
+    hot-corners {
+        off
+    }
+}
+
+// keybinds --------------------------------------------------------------
+binds {
+    Mod+Shift+Slash { show-hotkey-overlay; }
+    Mod+Space hotkey-overlay-title="Run an Application: rofi" { spawn "rofi -show drun"; }
+    Mod+Return hotkey-overlay-title="Open a Terminal: kitty" { spawn "kitty"; }
+    Mod+L { spawn "swaylock"; }
+}
+
+// wallpaper: awww
+spawn-sh-at-startup "awww-daemon"
+spawn-sh-at-startup "awww img -o DP-1,eDP-1 ~/pictures/awww/desk.png"
+
+// noctalia wall (foreign — must never be touched)
+layer-rule {
+    match namespace="^noctalia-backdrop"
+    place-within-backdrop true
+}
+
+// noctalia-style window rule: bare-ident args + nested blocks
+window-rule {
+    match app-id="dev.noctalia.Noctalia"
+    open-floating true
+    default-column-width { fixed 1080; }
+}

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Displays (niri)
+GenericName=Display Settings
+Comment=Arrange monitors for the niri compositor
+Exec=niri-center --pane displays
+Icon=preferences-desktop-display
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=niri;monitors;displays;outputs;screens;
+StartupWMClass=niri-center.displays

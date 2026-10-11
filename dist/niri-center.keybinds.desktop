@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Keyboard Shortcuts (niri)
+GenericName=Keyboard Shortcuts
+Comment=View and edit niri keybindings
+Exec=niri-center --pane keybinds
+Icon=preferences-desktop-keyboard-shortcuts
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=niri;keybinds;shortcuts;hotkeys;
+StartupWMClass=niri-center.keybinds

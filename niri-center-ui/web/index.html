@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>niri-center demo</title>
+  <meta name="description" content="niri-center, an unofficial settings center for the niri Wayland compositor, running in your browser on niri's default config.">
+  <style>
+    html, body { margin: 0; height: 100%; background: #1b1d22; color: #e4e7ec;
+                 font: 15px system-ui, sans-serif; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; outline: none; }
+    #loading { position: fixed; inset: 0; display: grid; place-items: center; }
+    @media (prefers-color-scheme: light) {
+      html, body { background: #f5f6f8; color: #1b1d22; }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading niri-center, about 3 MB.</div>
+  <script type="module">
+    import init from "./niri-center.js";
+    const loading = document.getElementById("loading");
+    init().then(() => loading.remove(), (error) => {
+      // iced hands the page to the browser's event loop by throwing this
+      if (String(error).includes("Using exceptions for control flow")) {
+        loading.remove();
+        return;
+      }
+      loading.textContent = "The demo could not start: " + error;
+      throw error;
+    });
+  </script>
+</body>
+</html>
