@@ -145,7 +145,7 @@ impl Side {
 /// Whether added or removed lines open every block they close, as a KDL
 /// block written or taken out whole does: `}` first and `x {` last is the
 /// same text read one line off.
-fn whole<'view>(lines: impl Iterator<Item = &'view str>) -> bool {
+fn whole<'line>(lines: impl Iterator<Item = &'line str>) -> bool {
     let mut depth = 0_i32;
     for line in lines.map(str::trim) {
         if line.starts_with('}') {

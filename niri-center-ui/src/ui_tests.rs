@@ -1145,9 +1145,7 @@ fn an_animation_the_config_leaves_alone_can_take_a_custom_curve() {
         [
             Message::Animations(animations::Message::Spring(false)),
             Message::Animations(animations::Message::Curve(Curve::CubicBezier)),
-            Message::Animations(animations::Message::Bezier(crate::curves::Bezier([
-                0.05, 0.7, 0.1, 1.0,
-            ]))),
+            Message::Animations(animations::Message::Bezier([0.05, 0.7, 0.1, 1.0])),
             Message::Animations(animations::Message::Duration("300".into())),
         ],
     );

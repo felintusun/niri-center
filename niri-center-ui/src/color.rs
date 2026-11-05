@@ -110,14 +110,18 @@ impl Program<Message, Theme, Renderer> for Picker {
                 let part = part_at(point.y);
                 state.dragging = Some(part);
                 Some(
-                    canvas::Action::publish(Message::from(self.pick(part, point, bounds.width)))
-                        .and_capture(),
+                    canvas::Action::publish(Message::ColorPicked(self.pick(
+                        part,
+                        point,
+                        bounds.width,
+                    )))
+                    .and_capture(),
                 )
             }
             canvas::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
                 let part = state.dragging?;
                 let point = local?;
-                Some(canvas::Action::publish(Message::from(self.pick(
+                Some(canvas::Action::publish(Message::ColorPicked(self.pick(
                     part,
                     point,
                     bounds.width,
@@ -274,4 +278,42 @@ pub fn picker(hsva: Hsva) -> Canvas<Picker, Message> {
     Canvas::new(Picker { hsva })
         .width(Length::Fill)
         .height(Length::Fixed(HEIGHT))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn picked(action: Option<canvas::Action<Message>>) -> (f32, f32) {
+        match action.map(|action| action.into_inner().0) {
+            Some(Some(Message::ColorPicked(hsva))) => (hsva.saturation, hsva.value),
+            other => panic!("expected a picked color, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pressing_and_dragging_on_the_square_picks_what_is_under_the_pointer() {
+        let picker = Picker {
+            hsva: Hsva::default(),
+        };
+        let bounds = Rectangle::new(Point::ORIGIN, Size::new(200.0, HEIGHT));
+        let mut state = PickerState::default();
+        // across is saturation, down the 120 tall square is less value
+        let pressed = picker.update(
+            &mut state,
+            &canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            bounds,
+            mouse::Cursor::Available(Point::new(100.0, 60.0)),
+        );
+        assert_eq!(picked(pressed), (0.5, 0.5));
+        let dragged = picker.update(
+            &mut state,
+            &canvas::Event::Mouse(mouse::Event::CursorMoved {
+                position: Point::new(50.0, 30.0),
+            }),
+            bounds,
+            mouse::Cursor::Available(Point::new(50.0, 30.0)),
+        );
+        assert_eq!(picked(dragged), (0.25, 0.75));
+    }
 }

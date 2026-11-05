@@ -778,12 +778,12 @@ impl Store {
         let (target, position, node_span) = self
             .binding_in_file(index)
             .ok_or(StoreError::EntryNotFound { index })?;
-        let source = self.doc(target)?.source.clone();
-        let (span, whole_line) = removal_span(&source, node_span);
+        let doc = self.doc(target)?;
+        let (span, whole_line) = removal_span(&doc.source, node_span);
         let removed = RemovedBinding {
             target,
             position,
-            text: source[span.start..span.end].to_string(),
+            text: doc.raw(span).to_string(),
             whole_line,
         };
         self.doc_mut(target)?.splice(span, "");

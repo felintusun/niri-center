@@ -8,10 +8,6 @@ use iced::widget::canvas::{self, Canvas, Path, Program};
 use iced::{Length, Point, Rectangle, Renderer, Theme, mouse};
 use niri_center::animations::Curve;
 
-/// New control points for the custom curve, while a handle is dragged.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Bezier(pub [f32; 4]);
-
 const fn pad() -> f32 {
     10.0
 }
@@ -104,7 +100,9 @@ impl Program<Message, Theme, Renderer> for CurvesProgram {
                     *handle_x = (across * 100.0).round() / 100.0;
                     *handle_y = (up * 100.0).round() / 100.0;
                 }
-                Some(canvas::Action::publish(Message::from(Bezier(points))))
+                Some(canvas::Action::publish(Message::Animations(
+                    crate::pages::animations::Message::Bezier(points),
+                )))
             }
             canvas::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
                 state.dragging.take().map(|_| canvas::Action::capture())
@@ -304,4 +302,41 @@ pub fn spring_canvas(damping_ratio: f32, stiffness: f32) -> Canvas<SpringProgram
     })
     .width(Length::Fill)
     .height(Length::Fixed(220.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dragging_a_handle_moves_only_its_own_two_numbers() {
+        let program = CurvesProgram {
+            selected: Curve::CubicBezier,
+            custom: [0.25, 0.25, 0.75, 0.75],
+        };
+        let bounds = Rectangle::new(Point::ORIGIN, iced::Size::new(400.0, 260.0));
+        let area = plot_area(bounds);
+        let first_handle = program.handles(area)[0];
+        let mut state = CurvesState::default();
+        let pressed = program.update(
+            &mut state,
+            &canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            bounds,
+            mouse::Cursor::Available(first_handle),
+        );
+        assert!(pressed.is_some());
+        let middle = Point::new(area.x + area.width / 2.0, area.y + area.height / 2.0);
+        let dragged = program.update(
+            &mut state,
+            &canvas::Event::Mouse(mouse::Event::CursorMoved { position: middle }),
+            bounds,
+            mouse::Cursor::Available(middle),
+        );
+        match dragged.map(|action| action.into_inner().0) {
+            Some(Some(Message::Animations(crate::pages::animations::Message::Bezier(points)))) => {
+                assert_eq!(points, [0.5, 0.5, 0.75, 0.75]);
+            }
+            other => panic!("expected new control points, got {other:?}"),
+        }
+    }
 }

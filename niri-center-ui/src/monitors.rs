@@ -155,11 +155,13 @@ impl Program<Message, Theme, Renderer> for MonitorProgram {
                     ));
                     let (name, _) = self.monitors.get(drag.index)?;
                     return Some(
-                        canvas::Action::publish(Message::from(DroppedMonitor {
-                            name: name.clone(),
-                            x: logical.x,
-                            y: logical.y,
-                        }))
+                        canvas::Action::publish(Message::Displays(
+                            crate::pages::displays::Message::Dropped(DroppedMonitor {
+                                name: name.clone(),
+                                x: logical.x,
+                                y: logical.y,
+                            }),
+                        ))
                         .and_capture(),
                     );
                 }
@@ -280,4 +282,50 @@ pub fn monitor_canvas(
     })
     .width(Length::Fill)
     .height(Length::Fixed(height))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dropping_a_display_reports_where_it_was_let_go_in_logical_pixels() {
+        let program = MonitorProgram {
+            monitors: vec![(
+                "eDP-1".to_string(),
+                MonitorInfo {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1920.0,
+                    height: 1080.0,
+                },
+            )],
+            selected: None,
+        };
+        let bounds = Rectangle::new(Point::ORIGIN, iced::Size::new(400.0, 300.0));
+        let mut state = MonitorsState::default();
+        let pressed = program.update(
+            &mut state,
+            &canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            bounds,
+            mouse::Cursor::Available(Point::new(200.0, 150.0)),
+        );
+        assert!(pressed.is_some());
+        let dropped = program.update(
+            &mut state,
+            &canvas::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+            bounds,
+            mouse::Cursor::Available(Point::new(240.0, 150.0)),
+        );
+        // the width sets the scale, with 24 of padding each side: 352 / 1920,
+        // so 40 canvas pixels right is 40 * 1920 / 352 logical pixels
+        match dropped.map(|action| action.into_inner().0) {
+            Some(Some(Message::Displays(crate::pages::displays::Message::Dropped(dropped)))) => {
+                assert_eq!(dropped.name, "eDP-1");
+                assert!((dropped.x - 218.18).abs() < 0.01, "x was {}", dropped.x);
+                assert!(dropped.y.abs() < 0.01, "y was {}", dropped.y);
+            }
+            other => panic!("expected a dropped display, got {other:?}"),
+        }
+    }
 }

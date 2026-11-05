@@ -22,7 +22,8 @@ pub enum Message {
     /// Edit the animation as a spring (true) or an easing curve.
     Spring(bool),
     Curve(Curve),
-    Bezier(curves::Bezier),
+    /// New control points for the custom curve, while a handle is dragged.
+    Bezier([f32; 4]),
     /// One of the custom curve's four numbers, typed.
     Point(usize, String),
     Duration(String),
@@ -42,7 +43,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
         }
         Message::Spring(spring) => editor.spring = spring,
         Message::Curve(name) => editor.curve = name,
-        Message::Bezier(curves::Bezier(points)) => {
+        Message::Bezier(points) => {
             editor.bezier = points.map(|point| short_number(f64::from(point)));
         }
         Message::Point(index, value) => {

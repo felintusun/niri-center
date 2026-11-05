@@ -13,8 +13,7 @@ use niri_center::settings::{Edit, OutputSetting, Setting};
 use niri_center::system::SystemData;
 
 use crate::app::ColorField;
-use crate::monitors::DroppedMonitor;
-use crate::{color, curves, keyboard, shortcuts};
+use crate::{color, shortcuts};
 
 #[derive(Debug, Clone)]
 // the browser demo has no event stream to deliver niri's events
@@ -129,30 +128,6 @@ pub enum Message {
     SaveAndClose,
     CloseCancel,
     CloseDiscard,
-}
-
-impl From<DroppedMonitor> for Message {
-    fn from(dropped: DroppedMonitor) -> Self {
-        Self::Displays(crate::pages::displays::Message::Dropped(dropped))
-    }
-}
-
-impl From<color::Hsva> for Message {
-    fn from(hsva: color::Hsva) -> Self {
-        Self::ColorPicked(hsva)
-    }
-}
-
-impl From<curves::Bezier> for Message {
-    fn from(bezier: curves::Bezier) -> Self {
-        Self::Animations(crate::pages::animations::Message::Bezier(bezier))
-    }
-}
-
-impl From<keyboard::KeyClicked> for Message {
-    fn from(clicked: keyboard::KeyClicked) -> Self {
-        Self::Keybinds(crate::pages::keybinds::Message::KeyClicked(clicked.token))
-    }
 }
 
 /// What the niri actor answers, as the message that handles it.

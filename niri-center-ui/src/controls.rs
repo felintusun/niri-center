@@ -19,6 +19,7 @@ use niri_center::settings::{
     Axis, Edit, Kind, NIRI_DEFAULT, NO_FILE, OnOff, Reading, join_sizes, size_label, sizes,
 };
 use niri_center::settings::{default_label, default_placeholder};
+use niri_center::words::Words;
 use niri_center::words::{
     comma_list, expand_strftime, join_path, short_fraction, short_number, split_path,
 };
@@ -111,10 +112,11 @@ pub fn control<'app>(
     state: &'app App,
     key: &DraftKey,
     kind: Kind,
-    default: &'app str,
+    default: Words,
     reading: Reading,
     make: impl Fn(Edit) -> Message + Clone + 'static,
 ) -> El<'app> {
+    let default = default.as_str();
     let drafted = |current: Option<String>| {
         state
             .session

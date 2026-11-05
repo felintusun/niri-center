@@ -12,12 +12,6 @@ use std::collections::HashMap;
 use niri_center::bindings::key_id;
 use niri_center::keyboard::{Key, Picture, key_width, same_key};
 
-/// Which key is pressed/clicked; the app toggles the list filter on it.
-#[derive(Debug, Clone)]
-pub struct KeyClicked {
-    pub token: String,
-}
-
 /// Space around the keys and between the main block and the navigation row.
 const PAD: f32 = 8.0;
 const NAV_GAP: f32 = 8.0;
@@ -134,9 +128,9 @@ impl Program<Message, Theme, Renderer> for KeyboardProgram<'_> {
             let (keys, _) = compute_rects(self.picture, bounds);
             if let Some(hit) = keys.iter().find(|key_rect| key_rect.rect.contains(cursor)) {
                 return Some(
-                    canvas::Action::publish(Message::from(KeyClicked {
-                        token: hit.key.token.clone(),
-                    }))
+                    canvas::Action::publish(Message::Keybinds(
+                        crate::pages::keybinds::Message::KeyClicked(hit.key.token.clone()),
+                    ))
                     .and_capture(),
                 );
             }
@@ -308,5 +302,40 @@ pub fn token_for(key: &iced::keyboard::Key) -> Option<String> {
             .to_string(),
         ),
         Key::Unidentified => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clicking_a_key_names_that_key() {
+        let key = |token: &str| Key {
+            token: token.to_string(),
+            label: token.to_string(),
+        };
+        let picture = Picture {
+            rows: vec![vec![key("A"), key("B")]],
+        };
+        let program = KeyboardProgram {
+            picture: &picture,
+            counts: HashMap::new(),
+            selected: None,
+        };
+        let bounds = Rectangle::new(Point::ORIGIN, iced::Size::new(400.0, 220.0));
+        // two keys of one width: the right half of the row is the second
+        let clicked = program.update(
+            &mut crate::icons::Kept::default(),
+            &canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            bounds,
+            mouse::Cursor::Available(Point::new(300.0, 110.0)),
+        );
+        match clicked.map(|action| action.into_inner().0) {
+            Some(Some(Message::Keybinds(crate::pages::keybinds::Message::KeyClicked(token)))) => {
+                assert_eq!(token, "B");
+            }
+            other => panic!("expected a clicked key, got {other:?}"),
+        }
     }
 }

@@ -424,8 +424,9 @@ impl Store {
             return self.insert_setting(chain, block, &braced);
         };
         let node = self.node(&addr)?;
-        let source = &self.doc(addr.target)?.source;
-        let inline = !source[node.node_span.start..node.node_span.end].contains('\n');
+        let doc = self.doc(addr.target)?;
+        let source = &doc.source;
+        let inline = !doc.raw(node.node_span).contains('\n');
         let Some(closing) = node.block.map(|block| block.end.saturating_sub(1)) else {
             let span = node.node_span;
             self.doc_mut(addr.target)?

@@ -210,7 +210,7 @@ fn spec_row<'app>(
             state,
             &parts.key,
             setting.kind,
-            setting.default.as_str(),
+            setting.default,
             reading,
             make,
         )

@@ -11,7 +11,7 @@ use niri_center::page::Page;
 use niri_center::search;
 use niri_center::session::{Platform, Problem, SaveState};
 use niri_center::summary;
-use niri_center::words::{count, shortened};
+use niri_center::words::{Words, count, shortened};
 
 use crate::app::{App, Closing};
 use crate::message::Message;
@@ -219,26 +219,26 @@ fn sidebar(state: &App) -> El<'_> {
     let fold = sidebar_button(
         icons::Icon::Sidebar,
         None,
-        if folded {
+        Words(if folded {
             "Show the names, Ctrl+B"
         } else {
             "Fold to icons, Ctrl+B"
-        },
+        }),
         false,
         Some(Message::ToggleSidebar),
     );
     let help = sidebar_button(
         icons::Icon::Help,
         None,
-        "Help, F1",
+        Words("Help, F1"),
         state.help_open,
         Some(Message::ShowHelp(!state.help_open)),
     );
     let (toggle, what) = config_toggle(state);
     let config = sidebar_button(
         icons::Icon::Source,
-        (!folded).then_some("Config text"),
-        what,
+        (!folded).then_some(Words("Config text")),
+        Words(what),
         state.source_open(),
         toggle,
     );
@@ -321,21 +321,21 @@ fn hairline_down() -> El<'static> {
 /// A button at the foot of the sidebar: an icon and its `label`, or the
 /// icon alone, which its tooltip names. `on` marks what it shows as
 /// showing. Without a message it is unavailable.
-fn sidebar_button<'text>(
+fn sidebar_button(
     icon: icons::Icon,
-    label: Option<&'text str>,
-    tip: &'text str,
+    label: Option<Words>,
+    tip: Words,
     on: bool,
     message: Option<Message>,
-) -> El<'text> {
+) -> El<'static> {
     let available = message.is_some();
     let drawn = if available {
         icons::strong(icon, 16.0)
     } else {
         icons::icon(icon, 16.0)
     };
-    let face: El<'text> = if let Some(label) = label {
-        let words = text(label).size(13).wrapping(text::Wrapping::None);
+    let face: El<'static> = if let Some(label) = label {
+        let words = text(label.as_str()).size(13).wrapping(text::Wrapping::None);
         row![
             drawn,
             if available {
@@ -359,7 +359,7 @@ fn sidebar_button<'text>(
     }
     iced::widget::tooltip(
         press,
-        controls::tip(tip),
+        controls::tip(tip.as_str()),
         iced::widget::tooltip::Position::Right,
     )
     .into()
