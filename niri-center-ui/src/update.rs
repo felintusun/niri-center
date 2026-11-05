@@ -303,7 +303,7 @@ pub fn update(state: &mut App, message: Message) -> Task<Message> {
         Message::Browsed(to, result) => match result {
             Ok(Some(path)) => return update(state, to.filled(&path)),
             Ok(None) => {}
-            Err(failure) => state.status = error(failure),
+            Err(failure) => state.status = error(failure.to_string()),
         },
         Message::SystemLoaded(data) => {
             state.layout_box = iced::widget::combo_box::State::new(data.layouts.clone());

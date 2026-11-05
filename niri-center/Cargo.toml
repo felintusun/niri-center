@@ -20,6 +20,8 @@ csscolorparser = "0.8"
 regex = "1.11"
 # the name a misspelled one was meant to be (already here through clap)
 strsim = "0.11"
+# what the desktop asks for arrives as a stream, empty in the browser demo
+futures-util = { version = "0.3", default-features = false }
 
 # niri's socket, its event stream and the action catalog: not in the browser
 # demo, where `bindings::CATALOG` stands in for the catalog
@@ -32,7 +34,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # xdg-desktop-portal on the session bus: the file chooser behind Browse, and
 # the color scheme and contrast the desktop asks for
 zbus = { version = "6", default-features = false, features = ["tokio", "proxy"] }
-futures-util = { version = "0.3", default-features = false }
 xkbcommon = { version = "0.9.0", default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -41,7 +41,10 @@ pub enum Message {
         to: crate::controls::Destination,
         folder: bool,
     },
-    Browsed(crate::controls::Destination, Result<Option<String>, String>),
+    Browsed(
+        crate::controls::Destination,
+        Result<Option<String>, niri_center::portal::ChooseError>,
+    ),
     SystemLoaded(SystemData),
     Animations(crate::pages::animations::Message),
     Rules(crate::pages::rules::Message),
