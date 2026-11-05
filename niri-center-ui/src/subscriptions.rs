@@ -2,9 +2,11 @@
 //! its own keys and the window's size. niri's events come from the niri
 //! actor.
 
+use iced::futures::SinkExt;
 use iced::futures::channel::mpsc::Sender;
 use iced::{Subscription, stream, window};
 use niri_center::page::Page;
+use niri_center::portal::{self, Appearance};
 
 use crate::app::App;
 use crate::message::Message;
@@ -31,27 +33,25 @@ fn app_events(
     }
 }
 
-/// Hand `message` on; `false` once nobody listens any more.
-fn send(sender: &mut Sender<Message>, message: Message) -> bool {
-    sender.try_send(message).is_ok()
+/// Send one thing the desktop asks for; `false` once the channel has closed.
+async fn send_appearance(mut sender: Sender<Message>, appearance: Appearance) -> bool {
+    let message = match appearance {
+        Appearance::Scheme(scheme) => Message::ModeLoaded(theme::mode(scheme)),
+        Appearance::HighContrast(high) => Message::ContrastLoaded(high),
+    };
+    // waits while the channel is full: only a closed one is an end
+    sender.send(message).await.is_ok()
 }
 
-/// Every later change of the desktop's color scheme or contrast.
+/// Send what the desktop asks for, until the channel closes.
+async fn follow_appearance(sender: Sender<Message>) {
+    portal::watch_appearance(|appearance| send_appearance(sender.clone(), appearance)).await;
+}
+
+/// The desktop's color scheme and contrast, then every later change of them.
 fn appearance_changes() -> Subscription<Message> {
-    use niri_center::portal::Appearance;
     Subscription::run_with("desktop-appearance", |_| {
-        stream::channel(4, |mut sender: Sender<Message>| async move {
-            niri_center::portal::watch_appearance(|appearance| {
-                send(
-                    &mut sender,
-                    match appearance {
-                        Appearance::Scheme(scheme) => Message::ModeLoaded(theme::mode(scheme)),
-                        Appearance::HighContrast(high) => Message::ContrastLoaded(high),
-                    },
-                )
-            })
-            .await;
-        })
+        stream::channel(4, follow_appearance)
     })
 }
 
