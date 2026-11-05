@@ -313,22 +313,51 @@ fn connected(name: &str, x: f64) -> niri_center::outputs::OutputInfo {
 }
 
 #[test]
+fn a_position_that_is_no_whole_number_says_so_and_writes_nothing() {
+    use niri_center::outputs::type_position;
+    use niri_center::settings::{Coordinate, DraftKey, Drafts};
+    let (_dir, mut store) = tree(&[("config.kdl", "layout {\n}\n")]);
+    let before = store.document().to_string();
+    let mut drafts = Drafts::default();
+    let outputs = [connected("DP-1", 0.0)];
+    type_position(
+        &mut store,
+        &mut drafts,
+        &outputs,
+        "DP-1",
+        Coordinate::X,
+        "left".to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        drafts
+            .error(&DraftKey::Position("DP-1".to_string(), Coordinate::X))
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("A position is a whole number of pixels.")
+    );
+    assert_eq!(store.document().to_string(), before);
+}
+
+#[test]
 fn the_last_display_that_is_on_stays_on() {
     use niri_center::settings::{Drafts, Edit, OutputSetting, edit_output};
     let (_dir, mut store) = tree(&[("config.kdl", "output \"DP-1\" {\n    off\n}\n")]);
     let mut drafts = Drafts::default();
     let outputs = [connected("DP-1", 0.0), connected("eDP-1", 1920.0)];
     // DP-1 is off already: eDP-1 is the only one on
-    assert!(
-        edit_output(
-            &mut store,
-            &mut drafts,
-            &outputs,
-            "eDP-1",
-            OutputSetting::Off,
-            Edit::Switch(true),
-        )
-        .is_err()
+    let refused = edit_output(
+        &mut store,
+        &mut drafts,
+        &outputs,
+        "eDP-1",
+        OutputSetting::Off,
+        Edit::Switch(true),
+    )
+    .unwrap_err();
+    assert_eq!(
+        refused.to_string(),
+        "eDP-1 is the only display that is on, so it stays on."
     );
     assert!(!store.document().to_string().contains("eDP-1"));
     // with DP-1 back on, eDP-1 may go off

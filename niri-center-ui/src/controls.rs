@@ -1031,7 +1031,7 @@ fn screenshot_field(
         Ok(name) => text(format!("A screenshot taken now: {name}"))
             .size(12)
             .style(theme::muted),
-        Err(why) => text(why).size(12).style(theme::error),
+        Err(why) => text(why.to_string()).size(12).style(theme::error),
     };
     col.push(preview).into()
 }

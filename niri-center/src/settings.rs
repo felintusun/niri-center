@@ -1907,9 +1907,32 @@ pub fn size_label(name: &str, value: &str) -> String {
     }
 }
 
-/// Check typed text: `Ok(None)` for empty (unset), the value to write, or a
-/// message saying what is accepted.
-pub fn parse(kind: Kind, input: &str) -> Result<Option<String>, String> {
+/// What is wrong with text typed into a field: what is accepted there.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum InputError {
+    #[error("Enter a whole number from {min} to {max}.")]
+    Integer { min: i64, max: i64 },
+    #[error("Enter a number from {min} to {max}.")]
+    Float { min: f64, max: f64 },
+    #[error("niri does not read this as a color. Try #7fc8ff, rgb(127, 200, 255) or a CSS name.")]
+    Color,
+    #[error("Both ends need a color niri can read.")]
+    Gradient,
+    #[error("Choose on or off.")]
+    Bool,
+    #[error("Enter a percentage such as 0% or 50%.")]
+    Percentage,
+    #[error("Keep at least one size.")]
+    NoSize,
+    #[error("A part of the screen is a number above 0 and at most 1, a fixed size whole pixels.")]
+    Size,
+    #[error("A position is a whole number of pixels.")]
+    Position,
+}
+
+/// Check typed text: `Ok(None)` for empty (unset), the value to write, or
+/// what is accepted.
+pub fn parse(kind: Kind, input: &str) -> Result<Option<String>, InputError> {
     let input = input.trim();
     if let Kind::Sizes { many, .. } = kind {
         return parse_sizes(input, many).map(Some);
@@ -1923,7 +1946,7 @@ pub fn parse(kind: Kind, input: &str) -> Result<Option<String>, String> {
             .ok()
             .filter(|number| (min..=max).contains(number))
             .map(|number| Some(number.to_string()))
-            .ok_or_else(|| format!("Enter a whole number from {min} to {max}.")),
+            .ok_or(InputError::Integer { min, max }),
         Kind::Float { min, max } => input
             .parse::<f64>()
             .ok()
@@ -1931,25 +1954,22 @@ pub fn parse(kind: Kind, input: &str) -> Result<Option<String>, String> {
             // written as typed: these settings take `24` as well as `24.5`
             // (only spring props insist on a decimal point; the core writes those)
             .map(|_| Some(input.to_string()))
-            .ok_or_else(|| format!("Enter a number from {min} to {max}.")),
+            .ok_or(InputError::Float { min, max }),
         Kind::Color => is_color(input)
             .then(|| Some(input.to_string()))
-            .ok_or_else(|| {
-                "niri does not read this as a color. Try #7fc8ff, rgb(127, 200, 255) or a CSS name."
-                    .to_string()
-            }),
+            .ok_or(InputError::Color),
         Kind::Gradient => Gradient::parse(input)
             .filter(Gradient::is_valid)
             .map(|_| Some(input.to_string()))
-            .ok_or_else(|| "Both ends need a color niri can read.".to_string()),
+            .ok_or(InputError::Gradient),
         Kind::Bool if matches!(input, "true" | "false") => Ok(Some(input.to_string())),
-        Kind::Bool => Err("Choose on or off.".to_string()),
+        Kind::Bool => Err(InputError::Bool),
         Kind::Prop { .. } => input
             .strip_suffix('%')
             .and_then(|number| number.trim().parse::<f64>().ok())
             .filter(|number| number.is_finite() && *number >= 0.0)
             .map(|_| Some(input.to_string()))
-            .ok_or_else(|| "Enter a percentage such as 0% or 50%.".to_string()),
+            .ok_or(InputError::Percentage),
         Kind::Text { .. }
         | Kind::Choice(_)
         | Kind::Switch
@@ -1965,10 +1985,10 @@ pub fn parse(kind: Kind, input: &str) -> Result<Option<String>, String> {
     }
 }
 
-fn parse_sizes(input: &str, many: bool) -> Result<String, String> {
+fn parse_sizes(input: &str, many: bool) -> Result<String, InputError> {
     let entries = sizes(input);
     if many && entries.is_empty() {
-        return Err("Keep at least one size.".to_string());
+        return Err(InputError::NoSize);
     }
     for (name, value) in &entries {
         let ok = match name.as_str() {
@@ -1979,10 +1999,7 @@ fn parse_sizes(input: &str, many: bool) -> Result<String, String> {
             _ => false,
         };
         if !ok {
-            return Err(
-                "A part of the screen is a number above 0 and at most 1, a fixed size whole pixels."
-                    .to_string(),
-            );
+            return Err(InputError::Size);
         }
     }
     // niri reads a proportion as a float only: `1.0`, never `1`
@@ -2003,7 +2020,7 @@ fn parse_sizes(input: &str, many: bool) -> Result<String, String> {
 #[derive(Debug, Clone, Default)]
 pub struct Drafts {
     typed: HashMap<DraftKey, String>,
-    errors: HashMap<DraftKey, String>,
+    errors: HashMap<DraftKey, InputError>,
 }
 
 impl Drafts {
@@ -2013,13 +2030,13 @@ impl Drafts {
     }
 
     /// Why what was typed under `key` cannot be written.
-    pub fn error(&self, key: &DraftKey) -> Option<&String> {
+    pub fn error(&self, key: &DraftKey) -> Option<&InputError> {
         self.errors.get(key)
     }
 
     /// Keep `text` as typed under `key`, and why it cannot be written yet,
     /// or that it can (`None`).
-    pub fn keep(&mut self, key: &DraftKey, text: String, error: Option<String>) {
+    pub fn keep(&mut self, key: &DraftKey, text: String, error: Option<InputError>) {
         self.typed.insert(key.clone(), text);
         match error {
             Some(error) => self.errors.insert(key.clone(), error),
@@ -2057,8 +2074,8 @@ impl Drafts {
                         self.keep(key, input, None);
                         Some(Reading::Value(value))
                     }
-                    Err(message) => {
-                        self.keep(key, input, Some(message));
+                    Err(problem) => {
+                        self.keep(key, input, Some(problem));
                         None
                     }
                 }
@@ -2111,7 +2128,7 @@ pub fn edit(
     drafts: &mut Drafts,
     setting: Setting,
     edit: Edit,
-) -> Result<(), String> {
+) -> Result<(), StoreError> {
     let spec = setting.spec();
     edit_in(
         store,
@@ -2132,11 +2149,11 @@ pub fn edit_in(
     chain: &[Block],
     key: &DraftKey,
     edit: Edit,
-) -> Result<(), String> {
+) -> Result<(), StoreError> {
     let Some(reading) = drafts.reading(key, spec.kind, edit) else {
         return Ok(());
     };
-    write(store, chain, spec.child.as_str(), spec.kind, &reading).map_err(|error| error.to_string())
+    write(store, chain, spec.child.as_str(), spec.kind, &reading)
 }
 
 /// Whether a display other than `output` is connected and on. Turning off
@@ -2149,6 +2166,15 @@ pub fn others_on(store: &Store, connected: &[OutputInfo], output: &str) -> bool 
         .any(|other| other.rect.is_some() && !store.is_set(&output_chain(&other.name), "off"))
 }
 
+/// Why one display's setting was not changed.
+#[derive(Debug, thiserror::Error)]
+pub enum OutputEditError {
+    #[error("{output} is the only display that is on, so it stays on.")]
+    LastOneOn { output: String },
+    #[error(transparent)]
+    Store(#[from] StoreError),
+}
+
 /// [`edit`] for one display's `setting`, in its `output` block. The last
 /// display that is on stays on.
 pub fn edit_output(
@@ -2158,14 +2184,14 @@ pub fn edit_output(
     output: &str,
     setting: OutputSetting,
     edit: Edit,
-) -> Result<(), String> {
+) -> Result<(), OutputEditError> {
     if setting == OutputSetting::Off
         && matches!(edit, Edit::Switch(true))
         && !others_on(store, connected, output)
     {
-        return Err(format!(
-            "{output} is the only display that is on, so it stays on."
-        ));
+        return Err(OutputEditError::LastOneOn {
+            output: output.to_string(),
+        });
     }
     edit_in(
         store,
@@ -2174,7 +2200,8 @@ pub fn edit_output(
         &output_chain(output),
         &DraftKey::Output(output.to_string(), setting),
         edit,
-    )
+    )?;
+    Ok(())
 }
 
 /// A line under a row's label: a fact about the setting, or a warning.
@@ -2424,6 +2451,80 @@ mod tests {
         assert_eq!(size_label("proportion", "0.33333"), "1/3");
         assert_eq!(size_label("proportion", "0.4"), "40%");
         assert_eq!(size_label("fixed", "800"), "800 px");
+    }
+
+    #[test]
+    fn text_that_does_not_read_says_what_is_accepted() {
+        let said = |kind, input| parse(kind, input).unwrap_err().to_string();
+        assert_eq!(
+            said(Kind::Integer { min: 0, max: 64 }, "65"),
+            "Enter a whole number from 0 to 64."
+        );
+        assert_eq!(
+            said(Kind::Integer { min: -3, max: 9 }, "ten"),
+            "Enter a whole number from -3 to 9."
+        );
+        assert_eq!(
+            said(Kind::Float { min: 0.5, max: 2.0 }, "3"),
+            "Enter a number from 0.5 to 2."
+        );
+        assert_eq!(
+            said(Kind::Color, "not a color"),
+            "niri does not read this as a color. Try #7fc8ff, rgb(127, 200, 255) or a CSS name."
+        );
+        assert_eq!(
+            said(Kind::Gradient, "from=\"nope\" to=\"nope\""),
+            "Both ends need a color niri can read."
+        );
+        assert_eq!(said(Kind::Bool, "maybe"), "Choose on or off.");
+        assert_eq!(
+            said(
+                Kind::Prop {
+                    name: Words("max-scroll-amount"),
+                    example: Words("0%"),
+                },
+                "half"
+            ),
+            "Enter a percentage such as 0% or 50%."
+        );
+        let sizes = Kind::Sizes {
+            axis: Axis::Width,
+            many: true,
+        };
+        assert_eq!(said(sizes, ""), "Keep at least one size.");
+        assert_eq!(
+            said(sizes, "proportion 1.5"),
+            "A part of the screen is a number above 0 and at most 1, a fixed size whole pixels."
+        );
+    }
+
+    #[test]
+    fn a_draft_keeps_why_its_text_does_not_read_until_it_does() {
+        let key = DraftKey::Setting(Setting::LayoutGaps);
+        let kind = Kind::Integer { min: 0, max: 64 };
+        let mut drafts = Drafts::default();
+        assert_eq!(drafts.reading(&key, kind, Edit::Draft("many".into())), None);
+        assert_eq!(
+            drafts.error(&key).map(ToString::to_string).as_deref(),
+            Some("Enter a whole number from 0 to 64.")
+        );
+        assert!(
+            drafts
+                .reading(&key, kind, Edit::Draft("8".into()))
+                .is_some()
+        );
+        assert_eq!(drafts.error(&key), None);
+    }
+
+    #[test]
+    fn a_store_failure_on_a_display_reads_as_the_store_says_it() {
+        assert_eq!(
+            OutputEditError::from(StoreError::OutputNotFound {
+                name: "DP-9".into()
+            })
+            .to_string(),
+            "output `DP-9` not found in the loaded config set"
+        );
     }
 
     #[test]

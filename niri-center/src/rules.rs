@@ -66,13 +66,33 @@ impl std::fmt::Display for When {
     }
 }
 
+/// Why a rule does not reach a window, in a sentence fragment.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum Miss {
+    #[error("the app ID has to match “{0}”")]
+    AppId(String),
+    #[error("the title has to match “{0}”")]
+    Title(String),
+    #[error("it only reaches floating windows")]
+    OnlyFloating,
+    #[error("it leaves out floating windows")]
+    NoFloating,
+    #[error("it only reaches focused windows")]
+    OnlyFocused,
+    #[error("it leaves out focused windows")]
+    NoFocused,
+    #[error("it is turned off")]
+    TurnedOff,
+    #[error("an exclude line leaves this window out")]
+    Excluded,
+}
+
 /// Whether a rule reaches a window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reach {
     Reaches,
-    /// It does not; when it nearly does, why not, in a sentence fragment
-    /// ("the title has to match …").
-    Misses(Option<String>),
+    /// It does not; when it nearly does, why not.
+    Misses(Option<Miss>),
     /// It depends on something the app cannot see from here (a window's
     /// workspace, whether it opened at startup).
     Unknown,
@@ -81,34 +101,39 @@ pub enum Reach {
 /// What one property of a line says about the window.
 enum Fit {
     Yes,
-    No(String),
+    No(Miss),
     Unknown,
 }
 
 fn fit(prop: &MatchProp, window: &OpenWindow) -> Fit {
     let MatchProp { name, value, .. } = prop;
-    let pattern =
-        |text: &str, what: &str| match prop.pattern.as_ref().map(|regex| regex.is_match(text)) {
-            Some(true) => Fit::Yes,
-            Some(false) => Fit::No(format!("the {what} has to match “{value}”")),
-            // niri refuses the config before such a rule matters
-            None => Fit::Unknown,
-        };
-    let flag = |state: bool, what: &str| {
+    let pattern = |text: &str, miss: fn(String) -> Miss| match prop
+        .pattern
+        .as_ref()
+        .map(|regex| regex.is_match(text))
+    {
+        Some(true) => Fit::Yes,
+        Some(false) => Fit::No(miss(value.clone())),
+        // niri refuses the config before such a rule matters
+        None => Fit::Unknown,
+    };
+    let flag = |state: bool, only: Miss, without: Miss| {
         let wanted = value != "false";
         if state == wanted {
             Fit::Yes
         } else if wanted {
-            Fit::No(format!("it only reaches {what} windows"))
+            Fit::No(only)
         } else {
-            Fit::No(format!("it leaves out {what} windows"))
+            Fit::No(without)
         }
     };
     match name {
-        MatchName::AppId => pattern(&window.app_id, "app ID"),
-        MatchName::Title => pattern(&window.title, "title"),
-        MatchName::IsFloating => flag(window.floating, "floating"),
-        MatchName::IsFocused | MatchName::IsActive => flag(window.focused, "focused"),
+        MatchName::AppId => pattern(&window.app_id, Miss::AppId),
+        MatchName::Title => pattern(&window.title, Miss::Title),
+        MatchName::IsFloating => flag(window.floating, Miss::OnlyFloating, Miss::NoFloating),
+        MatchName::IsFocused | MatchName::IsActive => {
+            flag(window.focused, Miss::OnlyFocused, Miss::NoFocused)
+        }
         MatchName::IsActiveInColumn
         | MatchName::IsUrgent
         | MatchName::IsWindowCastTarget
@@ -119,7 +144,7 @@ fn fit(prop: &MatchProp, window: &OpenWindow) -> Fit {
 
 /// Whether one `match` or `exclude` line matches: `None` when it cannot
 /// be told, else the reason it does not, if it does not.
-fn line(matcher: &Matcher, window: &OpenWindow) -> Option<Result<(), String>> {
+fn line(matcher: &Matcher, window: &OpenWindow) -> Option<Result<(), Miss>> {
     let mut miss = None;
     for prop in &matcher.props {
         match fit(prop, window) {
@@ -142,7 +167,7 @@ pub fn reach(rule: &WindowRuleRow, window: &OpenWindow) -> Reach {
     }
     // a rule turned off is only worth a word where it would apply
     if reach == Reach::Reaches {
-        Reach::Misses(Some("it is turned off".to_string()))
+        Reach::Misses(Some(Miss::TurnedOff))
     } else {
         Reach::Misses(None)
     }
@@ -156,7 +181,7 @@ pub fn reach_when_on(matchers: &[Matcher], window: &OpenWindow) -> Reach {
     for exclude in excludes {
         match line(exclude, window) {
             Some(Ok(())) => {
-                return Reach::Misses(Some("an exclude line leaves this window out".into()));
+                return Reach::Misses(Some(Miss::Excluded));
             }
             Some(Err(_)) => {}
             None => return Reach::Unknown,
@@ -305,6 +330,71 @@ mod tests {
         }
     }
 
+    /// Why `rule` nearly reaches `window`, as people read it.
+    fn near_miss(rule: &WindowRuleRow, window: &OpenWindow) -> String {
+        let Reach::Misses(Some(why)) = reach(rule, window) else {
+            panic!("no near miss");
+        };
+        why.to_string()
+    }
+
+    #[test]
+    fn a_near_miss_says_what_the_window_lacks() {
+        let tiled = window("firefox", "Picture-in-Picture");
+        let floating = OpenWindow {
+            floating: true,
+            focused: true,
+            ..window("firefox", "Picture-in-Picture")
+        };
+        let with = |name, value| rule(&[(false, &[("app-id", "^firefox$"), (name, value)])]);
+        assert_eq!(
+            near_miss(
+                &rule(&[(false, &[("title", "Picture"), ("app-id", "^kitty$")])]),
+                &tiled
+            ),
+            "the app ID has to match “^kitty$”"
+        );
+        assert_eq!(
+            near_miss(&with("title", "^Mozilla"), &tiled),
+            "the title has to match “^Mozilla”"
+        );
+        assert_eq!(
+            near_miss(&with("is-floating", "true"), &tiled),
+            "it only reaches floating windows"
+        );
+        assert_eq!(
+            near_miss(&with("is-floating", "false"), &floating),
+            "it leaves out floating windows"
+        );
+        assert_eq!(
+            near_miss(&with("is-focused", "true"), &tiled),
+            "it only reaches focused windows"
+        );
+        assert_eq!(
+            near_miss(&with("is-focused", "false"), &floating),
+            "it leaves out focused windows"
+        );
+    }
+
+    #[test]
+    fn a_rule_turned_off_or_excluded_says_so() {
+        let pip = window("firefox", "Picture-in-Picture");
+        assert_eq!(
+            near_miss(
+                &WindowRuleRow {
+                    disabled: true,
+                    ..rule(&[])
+                },
+                &pip
+            ),
+            "it is turned off"
+        );
+        assert_eq!(
+            near_miss(&rule(&[(true, &[("title", "^Picture")])]), &pip),
+            "an exclude line leaves this window out"
+        );
+    }
+
     #[test]
     fn reach_follows_niris_match_and_exclude() {
         let pip = window("firefox", "Picture-in-Picture");
@@ -326,7 +416,7 @@ mod tests {
                 ]),
                 &pip
             ),
-            Reach::Misses(Some("an exclude line leaves this window out".into()))
+            Reach::Misses(Some(Miss::Excluded))
         );
         assert_eq!(
             reach(
@@ -336,7 +426,7 @@ mod tests {
                 )]),
                 &pip
             ),
-            Reach::Misses(Some("the title has to match “Mozilla Firefox$”".into()))
+            Reach::Misses(Some(Miss::Title("Mozilla Firefox$".into())))
         );
         assert_eq!(
             reach(&rule(&[(false, &[("at-startup", "true")])]), &pip),

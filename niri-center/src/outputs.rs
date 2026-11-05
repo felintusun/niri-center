@@ -2,8 +2,8 @@
 //! their modes in words, the arrangement with staged changes applied, and
 //! where a dragged display lands.
 
-use crate::settings::{Coordinate, DraftKey, Drafts};
-use crate::store::{Block, Store};
+use crate::settings::{Coordinate, DraftKey, Drafts, InputError};
+use crate::store::{Block, Store, StoreError};
 use crate::words::short_number;
 use num_traits::ToPrimitive;
 
@@ -235,7 +235,7 @@ pub fn type_position(
     name: &str,
     coordinate: Coordinate,
     typed: String,
-) -> Result<(), String> {
+) -> Result<(), StoreError> {
     let key = DraftKey::Position(name.to_string(), coordinate);
     let current = staged(outputs, store);
     let Some((_, rect)) = current.iter().find(|(n, _)| n == name) else {
@@ -243,11 +243,7 @@ pub fn type_position(
         return Ok(());
     };
     let Ok(value) = typed.trim().parse::<i64>() else {
-        drafts.keep(
-            &key,
-            typed,
-            Some("A position is a whole number of pixels.".into()),
-        );
+        drafts.keep(&key, typed, Some(InputError::Position));
         return Ok(());
     };
     drafts.keep(&key, typed, None);
@@ -259,9 +255,7 @@ pub fn type_position(
         Coordinate::X => (value, rect_y),
         Coordinate::Y => (rect_x, value),
     };
-    store
-        .set_output_position(name, position_x, position_y)
-        .map_err(|error| error.to_string())
+    store.set_output_position(name, position_x, position_y)
 }
 
 /// Pairs that overlap, and displays no other display touches (the pointer

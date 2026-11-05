@@ -123,12 +123,31 @@ pub fn validate(path: &Path) -> Result<Report, ValidateError> {
 
 /// Whether niri reads the config at `path`: its words when it does not,
 /// or why it could not be asked.
-pub fn reads(path: &Path) -> Result<(), String> {
-    let report = validate(path).map_err(|error| error.to_string())?;
+pub fn reads(path: &Path) -> Result<(), ReadsError> {
+    let report = validate(path)?;
     if report.ok {
         Ok(())
     } else {
-        Err(report.diagnostics())
+        Err(ReadsError::Refused(report.diagnostics()))
+    }
+}
+
+/// Why niri does not read a config, as replies carry it. Replies are `Clone`
+/// and an `io::Error` is not, so a failure to ask is its text.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ReadsError {
+    /// niri's words for what is wrong with it.
+    #[error("{0}")]
+    Refused(String),
+    #[error("failed to run `niri validate`: {0}")]
+    NotAsked(String),
+}
+
+impl From<ValidateError> for ReadsError {
+    fn from(error: ValidateError) -> Self {
+        match error {
+            ValidateError::Io(source) => Self::NotAsked(source.to_string()),
+        }
     }
 }
 
@@ -215,6 +234,36 @@ Error:   × unexpected node `numlok`
                 "{text}"
             );
         }
+    }
+
+    #[test]
+    fn a_failure_to_ask_niri_reads_as_the_validate_error_it_came_from() {
+        let error = ValidateError::Io(std::io::Error::other("no such file"));
+        assert_eq!(
+            error.to_string(),
+            "failed to run `niri validate`: no such file"
+        );
+        assert_eq!(
+            ReadsError::from(error).to_string(),
+            "failed to run `niri validate`: no such file"
+        );
+    }
+
+    #[test]
+    fn what_niri_will_not_read_comes_back_in_its_own_words() {
+        if !niri_available() {
+            return;
+        }
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("config.kdl");
+        std::fs::write(&path, "layout {\n    gapz 8\n}\n").unwrap();
+        let Err(ReadsError::Refused(words)) = reads(&path) else {
+            panic!("niri read a config with a misspelled name");
+        };
+        assert!(words.contains("gapz"), "{words}");
+        assert_eq!(ReadsError::Refused(words.clone()).to_string(), words);
+        std::fs::write(&path, "layout {\n    gaps 8\n}\n").unwrap();
+        assert_eq!(reads(&path), Ok(()));
     }
 
     #[test]

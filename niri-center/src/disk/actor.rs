@@ -16,6 +16,7 @@ use crate::history::{self, Entry, FileChange, Source};
 use crate::session::SaveWhen;
 use crate::store::Store;
 use crate::summary::describe;
+use crate::validate::ReadsError;
 
 /// What the disk actor is asked to do.
 #[derive(Debug, Clone)]
@@ -98,15 +99,70 @@ pub enum Purpose {
     Preview,
 }
 
+/// A [`DiskError`] as replies carry it. Replies are `Clone` and an
+/// `io::Error` or a [`crate::store::StoreError`] is not, so those are their
+/// text.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum DiskFailure {
+    #[error("failed to read {path}: {reason}")]
+    Read { path: PathBuf, reason: String },
+    #[error("could not write {path}: {reason}")]
+    Write { path: PathBuf, reason: String },
+    #[error("{path} changed on disk since it was loaded")]
+    ChangedOnDisk { path: PathBuf },
+    #[error("config failed `niri validate`:\n{diagnostics}")]
+    Rejected { diagnostics: String },
+    #[error("niri validate could not run: {0}")]
+    Validator(String),
+    #[error("{0}")]
+    Store(String),
+    #[error("no backup of {name}")]
+    NoBackup { name: String },
+    #[error("snapshot {name}: {reason}")]
+    Snapshot { name: String, reason: String },
+    #[error("The preference could not be kept: {reason}")]
+    Preference { reason: String },
+    /// Why the history could not keep a change.
+    #[error("{0}")]
+    History(String),
+}
+
+impl From<DiskError> for DiskFailure {
+    fn from(error: DiskError) -> Self {
+        match error {
+            DiskError::Read { path, source } => Self::Read {
+                path,
+                reason: source.to_string(),
+            },
+            DiskError::Write { path, source } => Self::Write {
+                path,
+                reason: source.to_string(),
+            },
+            DiskError::ChangedOnDisk { path } => Self::ChangedOnDisk { path },
+            DiskError::Rejected { diagnostics } => Self::Rejected { diagnostics },
+            DiskError::Validator(why) => Self::Validator(why),
+            DiskError::Store(source) => Self::Store(source.to_string()),
+            DiskError::NoBackup { name } => Self::NoBackup { name },
+            DiskError::Snapshot { name, source } => Self::Snapshot {
+                name,
+                reason: source.to_string(),
+            },
+            DiskError::Preference { source } => Self::Preference {
+                reason: source.to_string(),
+            },
+        }
+    }
+}
+
 /// What the disk actor answers.
 #[derive(Debug, Clone)]
 pub enum Reply {
-    Loaded(Result<Loaded, String>),
+    Loaded(Result<Loaded, DiskFailure>),
     /// The history, oldest first, with what other programs changed while
     /// the app was closed as its newest entry.
     History(Vec<Entry>),
     /// Whether niri reads the config as it was at start.
-    Checked(Result<(), String>),
+    Checked(Result<(), ReadsError>),
     /// What became of the save made at `revision`.
     Saved {
         revision: u64,
@@ -114,7 +170,7 @@ pub enum Reply {
     },
     /// What other programs wrote, loaded anew, and its history entry.
     Reloaded(Option<(Loaded, Entry)>),
-    Diagnosed(Result<(), String>),
+    Diagnosed(Result<(), ReadsError>),
     Texts {
         time: u128,
         purpose: Purpose,
@@ -131,14 +187,14 @@ pub enum Reply {
     },
     Backup {
         name: String,
-        text: Result<String, String>,
+        text: Result<String, DiskFailure>,
     },
     Snapshot {
         name: String,
-        files: Result<Vec<(String, String)>, String>,
+        files: Result<Vec<(String, String)>, DiskFailure>,
     },
     /// A snapshot could not be made or deleted, or a preference kept.
-    Failed(String),
+    Failed(DiskFailure),
 }
 
 /// What became of a save.
@@ -166,7 +222,7 @@ pub enum Refusal {
     ChangedOnDisk(PathBuf),
     /// This file cannot be written here.
     Unwritable(PathBuf),
-    Failed(String),
+    Failed(DiskFailure),
 }
 
 impl From<DiskError> for Refusal {
@@ -180,7 +236,7 @@ impl From<DiskError> for Refusal {
             | DiskError::Store(_)
             | DiskError::NoBackup { .. }
             | DiskError::Snapshot { .. }
-            | DiskError::Preference { .. }) => Self::Failed(other.to_string()),
+            | DiskError::Preference { .. }) => Self::Failed(other.into()),
         }
     }
 }
@@ -247,7 +303,12 @@ impl Actor {
             Command::Reload { main, saved } => {
                 let (reloaded, unrecorded) = self.reload(&main, &saved).unzip();
                 let mut replies = vec![Reply::Reloaded(reloaded)];
-                replies.extend(unrecorded.flatten().map(Reply::Failed));
+                replies.extend(
+                    unrecorded
+                        .flatten()
+                        .map(DiskFailure::History)
+                        .map(Reply::Failed),
+                );
                 replies
             }
             Command::Diagnose { main } => vec![Reply::Diagnosed(self.diagnose(&main))],
@@ -263,26 +324,26 @@ impl Actor {
             }],
             Command::Listing => vec![self.listing()],
             Command::Backup { name } => {
-                let text = self.disk.backup(&name).map_err(|error| error.to_string());
+                let text = self.disk.backup(&name).map_err(DiskFailure::from);
                 vec![Reply::Backup { name, text }]
             }
             Command::CreateSnapshot { name, files } => {
                 match self.disk.create_snapshot(&name, files) {
                     Ok(()) => vec![self.listing()],
-                    Err(error) => vec![Reply::Failed(error.to_string()), self.listing()],
+                    Err(error) => vec![Reply::Failed(error.into()), self.listing()],
                 }
             }
             Command::Snapshot { name } => {
-                let files = self.disk.snapshot(&name).map_err(|error| error.to_string());
+                let files = self.disk.snapshot(&name).map_err(DiskFailure::from);
                 vec![Reply::Snapshot { name, files }]
             }
             Command::DeleteSnapshot { name } => match self.disk.delete_snapshot(&name) {
                 Ok(()) => vec![self.listing()],
-                Err(error) => vec![Reply::Failed(error.to_string()), self.listing()],
+                Err(error) => vec![Reply::Failed(error.into()), self.listing()],
             },
             Command::KeepSaveWhen(when) => match self.disk.keep_save_when(when) {
                 Ok(()) => Vec::new(),
-                Err(error) => vec![Reply::Failed(error.to_string())],
+                Err(error) => vec![Reply::Failed(error.into())],
             },
         }
     }
@@ -290,7 +351,7 @@ impl Actor {
     fn start(&mut self, main: &Path) -> Vec<Reply> {
         let loaded = match self.disk.load(main) {
             Ok(loaded) => loaded,
-            Err(error) => return vec![Reply::Loaded(Err(error.to_string()))],
+            Err(error) => return vec![Reply::Loaded(Err(error.into()))],
         };
         if let Some(dir) = &self.history_dir {
             self.history = history::load(dir);
@@ -302,7 +363,7 @@ impl Actor {
             Reply::History(self.history.clone()),
             Reply::Checked(checked),
         ];
-        replies.extend(unrecorded.map(Reply::Failed));
+        replies.extend(unrecorded.map(DiskFailure::History).map(Reply::Failed));
         replies
     }
 
@@ -481,7 +542,7 @@ impl Actor {
         Some(((fresh, entry), unrecorded))
     }
 
-    fn diagnose(&self, main: &Path) -> Result<(), String> {
+    fn diagnose(&self, main: &Path) -> Result<(), ReadsError> {
         self.disk.check_on_disk(main)
     }
 
@@ -496,4 +557,195 @@ impl Actor {
 /// The files `job` changes, with their texts before and after.
 fn changed(job: &SaveJob) -> Vec<FileChange> {
     job.changed().cloned().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::*;
+    use crate::store::StoreError;
+
+    fn denied() -> io::Error {
+        io::Error::other("denied")
+    }
+
+    #[test]
+    fn a_failure_reads_as_the_disk_error_it_came_from() {
+        let path = || PathBuf::from("/niri/a.kdl");
+        for (error, said) in [
+            (
+                DiskError::Read {
+                    path: path(),
+                    source: denied(),
+                },
+                "failed to read /niri/a.kdl: denied",
+            ),
+            (
+                DiskError::Write {
+                    path: path(),
+                    source: denied(),
+                },
+                "could not write /niri/a.kdl: denied",
+            ),
+            (
+                DiskError::ChangedOnDisk { path: path() },
+                "/niri/a.kdl changed on disk since it was loaded",
+            ),
+            (
+                DiskError::Rejected {
+                    diagnostics: "unexpected node".into(),
+                },
+                "config failed `niri validate`:\nunexpected node",
+            ),
+            (
+                DiskError::Validator("no niri".into()),
+                "niri validate could not run: no niri",
+            ),
+            (
+                DiskError::Store(StoreError::NoBinds),
+                "no `binds` block in the loaded config set",
+            ),
+            (
+                DiskError::NoBackup {
+                    name: "a.kdl".into(),
+                },
+                "no backup of a.kdl",
+            ),
+            (
+                DiskError::Snapshot {
+                    name: "before".into(),
+                    source: denied(),
+                },
+                "snapshot before: denied",
+            ),
+            (
+                DiskError::Preference { source: denied() },
+                "The preference could not be kept: denied",
+            ),
+        ] {
+            assert_eq!(error.to_string(), said);
+            assert_eq!(DiskFailure::from(error).to_string(), said);
+        }
+    }
+
+    #[test]
+    fn a_refusal_keeps_only_what_it_has_no_case_for_as_a_failure() {
+        assert_eq!(
+            Refusal::from(DiskError::Validator("no niri".into())),
+            Refusal::Failed(DiskFailure::Validator("no niri".into()))
+        );
+        assert_eq!(
+            Refusal::from(DiskError::ChangedOnDisk {
+                path: "/niri/a.kdl".into()
+            }),
+            Refusal::ChangedOnDisk("/niri/a.kdl".into())
+        );
+    }
+
+    #[test]
+    fn what_cannot_be_found_is_answered_with_its_name() {
+        let mut actor = Actor::new(Disk::memory([]), None);
+        let replies = actor.handle(Command::Backup {
+            name: "a.kdl".into(),
+        });
+        let [Reply::Backup { text: Err(why), .. }] = replies.as_slice() else {
+            panic!("{replies:?}");
+        };
+        assert_eq!(why.to_string(), "no backup of a.kdl");
+        let replies = actor.handle(Command::Snapshot {
+            name: "before".into(),
+        });
+        let [
+            Reply::Snapshot {
+                files: Err(why), ..
+            },
+        ] = replies.as_slice()
+        else {
+            panic!("{replies:?}");
+        };
+        assert!(why.to_string().starts_with("snapshot before: "), "{why}");
+    }
+
+    #[test]
+    fn a_history_that_cannot_keep_a_reload_says_why_in_the_ios_words() {
+        let dir = tempfile::tempdir().unwrap();
+        let blocked = dir.path().join("history");
+        std::fs::write(&blocked, "a file where the folder goes").unwrap();
+        let main = PathBuf::from("/niri/config.kdl");
+        let on_disk = [(main.clone(), "layout {\n    gaps 9\n}\n".to_string())];
+        let mut actor = Actor::new(Disk::memory(on_disk), Some(blocked));
+        let replies = actor.handle(Command::Reload {
+            main: main.clone(),
+            saved: vec![(main, "layout {\n    gaps 8\n}\n".to_string())],
+        });
+        let [
+            Reply::Reloaded(Some(_)),
+            Reply::Failed(why @ DiskFailure::History(reason)),
+        ] = replies.as_slice()
+        else {
+            panic!("{replies:?}");
+        };
+        assert!(!reason.is_empty());
+        assert_eq!(why.to_string(), *reason);
+    }
+
+    #[test]
+    fn a_history_that_cannot_keep_what_changed_while_closed_says_why() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let history_dir = dir.path().join("history");
+        let main = PathBuf::from("/niri/config.kdl");
+        let files = [FileChange {
+            path: main.clone(),
+            before: String::new(),
+            after: "layout {\n    gaps 8\n}\n".to_string(),
+        }];
+        let entry = Entry::new(1, Source::App, Vec::new(), &files);
+        history::record(&history_dir, &entry, &files).unwrap();
+        let locked = std::fs::Permissions::from_mode(0o555);
+        std::fs::set_permissions(&history_dir, locked).unwrap();
+        let on_disk = [(main.clone(), "layout {\n    gaps 9\n}\n".to_string())];
+        let mut actor = Actor::new(Disk::memory(on_disk), Some(history_dir.clone()));
+        // root writes where the mode says no: nothing fails to report
+        let root = std::fs::write(history_dir.join("probe"), "").is_ok();
+        let replies = actor.handle(Command::Start { main });
+        let open = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(&history_dir, open).unwrap();
+        if root {
+            return;
+        }
+        let [
+            Reply::Loaded(Ok(_)),
+            Reply::History(_),
+            Reply::Checked(Ok(())),
+            Reply::Failed(why @ DiskFailure::History(reason)),
+        ] = replies.as_slice()
+        else {
+            panic!("{replies:?}");
+        };
+        assert!(!reason.is_empty());
+        assert_eq!(why.to_string(), *reason);
+    }
+
+    #[test]
+    fn a_config_that_cannot_be_loaded_says_why() {
+        let main = PathBuf::from("/niri/config.kdl");
+        let mut actor = Actor::new(Disk::memory([]), None);
+        let replies = actor.handle(Command::Start { main: main.clone() });
+        let [Reply::Loaded(Err(DiskFailure::Read { path, .. }))] = replies.as_slice() else {
+            panic!("{replies:?}");
+        };
+        assert_eq!(*path, main);
+        let broken = [(main.clone(), "layout {".to_string())];
+        let mut actor = Actor::new(Disk::memory(broken), None);
+        let replies = actor.handle(Command::Start { main });
+        let [Reply::Loaded(Err(why @ DiskFailure::Store(_)))] = replies.as_slice() else {
+            panic!("{replies:?}");
+        };
+        assert!(
+            why.to_string().starts_with("failed to parse config: "),
+            "{why}"
+        );
+    }
 }

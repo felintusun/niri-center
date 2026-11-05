@@ -142,7 +142,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
                     state.keybinds.form = None;
                     state.status = info(done);
                 }
-                Err(failure) => state.status = error(failure),
+                Err(failure) => state.status = error(failure.to_string()),
             }
         }
         Message::Remove(index) => {

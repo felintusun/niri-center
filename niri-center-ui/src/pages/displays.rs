@@ -22,7 +22,7 @@ pub struct State {
     pub selected: Option<String>,
     pub monitors: Vec<(String, MonitorInfo)>,
     /// Why niri could not say which displays there are.
-    pub error: Option<String>,
+    pub error: Option<niri::NiriError>,
 }
 
 /// What the page's controls ask for.
@@ -56,9 +56,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
                     return Ok(());
                 };
                 moved = Some((x, y));
-                store
-                    .set_output_position(&dropped.name, x, y)
-                    .map_err(|failure| failure.to_string())
+                store.set_output_position(&dropped.name, x, y)
             });
             match (result, moved) {
                 (Ok(()), Some((x, y))) => {
@@ -76,7 +74,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
                     }
                 }
                 (Ok(()), None) => {}
-                (Err(failure), _) => state.status = error(failure),
+                (Err(failure), _) => state.status = error(failure.to_string()),
             }
         }
         Message::Pick(name) => state.displays.selected = Some(name),
@@ -86,7 +84,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
             if let Err(failure) = state.session.change_display(true, |store, drafts| {
                 outputs::type_position(store, drafts, outputs, &name, coordinate, typed)
             }) {
-                state.status = error(failure);
+                state.status = error(failure.to_string());
             }
         }
     }
@@ -247,7 +245,7 @@ fn position_row(
             .drafts
             .error(&DraftKey::Position(output.name.clone(), coordinate))
         {
-            label = label.push(text(problem.clone()).size(12).style(theme::error));
+            label = label.push(text(problem.to_string()).size(12).style(theme::error));
         }
     }
     row![

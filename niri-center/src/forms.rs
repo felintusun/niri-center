@@ -5,7 +5,9 @@ use std::collections::BTreeSet;
 
 use crate::bindings::action_body;
 use crate::rules::When;
-use crate::store::{BindingRow, NewWindowRule, RuleProperty, Store, TextMatch, WindowRuleRow};
+use crate::store::{
+    BindingRow, NewWindowRule, RuleProperty, Store, StoreError, TextMatch, WindowRuleRow,
+};
 
 /// The rule being put together on the Rules page: which windows (app,
 /// title, a state), and what happens to them.
@@ -58,6 +60,19 @@ impl RuleDraft {
     }
 }
 
+/// What keeps a binding's form from going into the config.
+#[derive(Debug, thiserror::Error)]
+pub enum BindingFormError {
+    #[error("Enter a key combo, for example Mod+T.")]
+    NoKey,
+    #[error("Choose an action.")]
+    NoAction,
+    #[error("{key} is already bound to {action} in this file. Edit that binding instead.")]
+    KeyTaken { key: String, action: String },
+    #[error(transparent)]
+    Store(#[from] StoreError),
+}
+
 /// The form for a binding: a new one, or one of the config's.
 #[derive(Debug, Clone, Default)]
 pub struct BindingForm {
@@ -71,33 +86,33 @@ pub struct BindingForm {
 impl BindingForm {
     /// Add the binding, or change the one being edited, in `store`, whose
     /// bindings are `rows`. What happened, in words, or what is missing.
-    pub fn apply(&self, store: &mut Store, rows: &[BindingRow]) -> Result<String, String> {
+    pub fn apply(
+        &self,
+        store: &mut Store,
+        rows: &[BindingRow],
+    ) -> Result<String, BindingFormError> {
         let key = self.key.trim();
         if key.is_empty() {
-            return Err("Enter a key combo, for example Mod+T.".to_string());
+            return Err(BindingFormError::NoKey);
         }
         let Some(action) = &self.action else {
-            return Err("Choose an action.".to_string());
+            return Err(BindingFormError::NoAction);
         };
         if let Some(taken) = store
             .binding_in_the_way(key, self.editing)
             .and_then(|index| rows.get(index))
         {
-            return Err(format!(
-                "{key} is already bound to {} in this file. Edit that binding instead.",
-                taken.action
-            ));
+            return Err(BindingFormError::KeyTaken {
+                key: key.to_string(),
+                action: taken.action.clone(),
+            });
         }
         let body = action_body(action, &self.args);
         if let Some(index) = self.editing {
-            store
-                .edit_binding(index, key, &body)
-                .map_err(|error| error.to_string())?;
+            store.edit_binding(index, key, &body)?;
             return Ok("Binding updated.".to_string());
         }
-        let at = store
-            .add_binding(key, &body)
-            .map_err(|error| error.to_string())?;
+        let at = store.add_binding(key, &body)?;
         // the same key in another file: whichever niri reads last wins
         let rows = store.binding_rows();
         let added = rows.get(at);
@@ -116,18 +131,27 @@ impl BindingForm {
     }
 }
 
+/// What keeps a rule's form from going into the config.
+#[derive(Debug, thiserror::Error)]
+pub enum RuleDraftError {
+    #[error("Say which windows: an app ID, a title or a state. Or pick a window.")]
+    NoWindows,
+    #[error("Choose at least one thing the rule does.")]
+    NoProperties,
+    #[error(transparent)]
+    Store(#[from] StoreError),
+}
+
 impl RuleDraft {
     /// Add the rule, or change the one being edited, in `store`: where it
     /// is now and what happened, in words, or what is missing.
-    pub fn apply(&self, store: &mut Store) -> Result<(usize, &'static str), String> {
+    pub fn apply(&self, store: &mut Store) -> Result<(usize, &'static str), RuleDraftError> {
         let rule = self.rule();
         if rule.app_id.is_none() && rule.title.is_none() && rule.flags.is_empty() {
-            return Err(
-                "Say which windows: an app ID, a title or a state. Or pick a window.".to_string(),
-            );
+            return Err(RuleDraftError::NoWindows);
         }
         if rule.properties.is_empty() {
-            return Err("Choose at least one thing the rule does.".to_string());
+            return Err(RuleDraftError::NoProperties);
         }
         let (written, done) = match self.editing {
             Some(index) => (
@@ -136,9 +160,7 @@ impl RuleDraft {
             ),
             None => (store.add_window_rule(&rule), "Rule added."),
         };
-        written
-            .map(|at| (at, done))
-            .map_err(|error| error.to_string())
+        Ok((written?, done))
     }
 }
 
@@ -175,4 +197,90 @@ pub fn follow<T>(
         .min_by_key(|(at, _)| at.abs_diff(index))
         .map(|(at, _)| at)
         .or_else(|| (before.len() == after.len()).then_some(index))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn store(text: &str) -> Store {
+        Store::read(PathBuf::from("/niri/config.kdl"), |_| Ok(text.to_string())).unwrap()
+    }
+
+    #[test]
+    fn a_binding_form_says_what_is_missing_before_it_touches_the_config() {
+        let mut config = store("binds {\n    Mod+T { spawn \"kitty\"; }\n}\n");
+        let rows = config.binding_rows();
+        let before = config.document().to_string();
+        let mut form = BindingForm::default();
+        assert_eq!(
+            form.apply(&mut config, &rows).unwrap_err().to_string(),
+            "Enter a key combo, for example Mod+T."
+        );
+        form.key = "Mod+Q".into();
+        assert_eq!(
+            form.apply(&mut config, &rows).unwrap_err().to_string(),
+            "Choose an action."
+        );
+        form.key = "Mod+T".into();
+        form.action = Some("close-window".into());
+        assert_eq!(
+            form.apply(&mut config, &rows).unwrap_err().to_string(),
+            format!(
+                "Mod+T is already bound to {} in this file. Edit that binding instead.",
+                rows[0].action
+            )
+        );
+        assert_eq!(config.document().to_string(), before);
+    }
+
+    #[test]
+    fn a_binding_that_is_gone_is_the_stores_to_explain() {
+        let mut config = store("binds {\n    Mod+T { spawn \"kitty\"; }\n}\n");
+        let rows = config.binding_rows();
+        let form = BindingForm {
+            key: "Mod+Q".into(),
+            action: Some("close-window".into()),
+            editing: Some(9),
+            ..BindingForm::default()
+        };
+        assert_eq!(
+            form.apply(&mut config, &rows).unwrap_err().to_string(),
+            "entry at index 9 not found"
+        );
+    }
+
+    #[test]
+    fn a_rule_draft_says_what_is_missing_before_it_touches_the_config() {
+        let mut config = store("layout {\n}\n");
+        let before = config.document().to_string();
+        let mut draft = RuleDraft::default();
+        assert_eq!(
+            draft.apply(&mut config).unwrap_err().to_string(),
+            "Say which windows: an app ID, a title or a state. Or pick a window."
+        );
+        draft.app = "firefox".into();
+        assert_eq!(
+            draft.apply(&mut config).unwrap_err().to_string(),
+            "Choose at least one thing the rule does."
+        );
+        assert_eq!(config.document().to_string(), before);
+    }
+
+    #[test]
+    fn a_rule_that_is_gone_is_the_stores_to_explain() {
+        let mut config = store("layout {\n}\n");
+        let draft = RuleDraft {
+            app: "firefox".into(),
+            properties: BTreeSet::from([RuleProperty::OpenFloating]),
+            editing: Some(9),
+            ..RuleDraft::default()
+        };
+        assert_eq!(
+            draft.apply(&mut config).unwrap_err().to_string(),
+            "entry at index 9 not found"
+        );
+    }
 }

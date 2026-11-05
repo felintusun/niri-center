@@ -276,7 +276,7 @@ fn row_frame<'app>(
         }));
     }
     if let Some(error) = state.session.drafts.error(&parts.key) {
-        label = label.push(text(error.clone()).size(12).style(theme::error));
+        label = label.push(text(error.to_string()).size(12).style(theme::error));
     }
     // the reset sits before the control, so every control in a group ends
     // at the same edge whether or not its value can be taken out

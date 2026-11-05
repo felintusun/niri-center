@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use iced::Color;
 use niri_center::disk::actor::Reply;
-use niri_center::niri::{self, EventKind, Running};
+use niri_center::niri::{self, EventKind, NiriError, Running};
 use niri_center::outputs::OutputInfo;
 use niri_center::page::Page;
 use niri_center::search;
@@ -34,7 +34,7 @@ pub enum Message {
     OpenColor(ColorField, Option<Color>, crate::controls::Destination),
     ColorPicked(color::Hsva),
     PickScreenColor,
-    ScreenColor(Result<Option<[f64; 3]>, String>),
+    ScreenColor(Result<Option<[f64; 3]>, NiriError>),
     CloseColor,
     /// Ask the desktop's file chooser for a path, for `to`.
     Browse {
@@ -52,12 +52,12 @@ pub enum Message {
     KeepTrial,
     /// Undo the display change on trial.
     EndTrial,
-    OutputsLoaded(Result<Vec<OutputInfo>, String>),
+    OutputsLoaded(Result<Vec<OutputInfo>, NiriError>),
     RunningTick,
-    RunningLoaded(Result<Running, String>),
+    RunningLoaded(Result<Running, NiriError>),
     /// One line from niri's event stream: its kind and text.
     LiveEvent(EventKind, String),
-    LiveError(String),
+    LiveError(NiriError),
     ClearLive,
     Files(crate::pages::files::Message),
     // chrome
@@ -74,10 +74,10 @@ pub enum Message {
     SearchPickHere(crate::pages::rules::Message),
     ShowHelp(bool),
     PopOut(Page),
-    PoppedOut(Result<(), String>),
+    PoppedOut(Result<(), NiriError>),
     /// Open niri's documentation on a page in the browser.
     OpenDocs(Page),
-    LinkOpened(Result<(), String>),
+    LinkOpened(Result<(), NiriError>),
     // saving and the history
     /// The wait after the last edit may be over: save when it is.
     SaveTick,
@@ -120,7 +120,7 @@ pub enum Message {
         meant: String,
     },
     FocusWindow(u64),
-    WindowFocused(Result<(), String>),
+    WindowFocused(Result<(), NiriError>),
     ShowBrokenLine(bool),
     DismissHealth,
     // closing

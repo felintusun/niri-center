@@ -13,12 +13,13 @@ use std::time::Duration;
 use crate::clock::Instant;
 use crate::diff;
 use crate::disk::SaveJob;
-use crate::disk::actor::{Command, Outcome, Purpose, Refusal, Reply, Save};
+use crate::disk::actor::{Command, DiskFailure, Outcome, Purpose, Refusal, Reply, Save};
 use crate::history::{Entry, FileChange, Source};
 use crate::settings::Drafts;
 use crate::store::{Store, StoreError};
 use crate::summary::{describe, moment, today};
 use crate::typo::{self, Typo};
+use crate::validate::ReadsError;
 
 /// How long the app waits after the last edit before it saves.
 const SAVE_DELAY: Duration = Duration::from_millis(700);
@@ -67,7 +68,7 @@ pub enum Problem {
     ChangedOnDisk(String),
     /// The file cannot be written here (read-only, a Nix store link).
     ReadOnly(String),
-    Failed(String),
+    Failed(DiskFailure),
 }
 
 /// Where the edits stand: what the header says, and what closing does.
@@ -408,11 +409,11 @@ impl Session {
     }
 
     /// niri's words on why it cannot read the config, once it gives them.
-    pub fn diagnosed(&mut self, result: Result<(), String>) {
+    pub fn diagnosed(&mut self, result: Result<(), ReadsError>) {
         if let (Some(health), Err(words)) = (&self.health, result) {
             self.health = Some(Health::new(
                 health.message.clone(),
-                Some(words),
+                Some(words.to_string()),
                 self.store.as_ref(),
             ));
         }
@@ -420,11 +421,11 @@ impl Session {
 
     /// niri's verdict on the config as it was at start: one it cannot read
     /// already is not blamed on the next change.
-    pub fn checked_at_start(&mut self, result: Result<(), String>) {
+    pub fn checked_at_start(&mut self, result: Result<(), ReadsError>) {
         if let Err(words) = result {
             self.health = Some(Health::new(
                 "niri can't read your config as it is now. It keeps running the last version that loaded.",
-                Some(words),
+                Some(words.to_string()),
                 self.store.as_ref(),
             ));
         }
@@ -775,11 +776,11 @@ impl Session {
     /// for their save are saved first, so the trial covers this change
     /// alone. A picked value is saved and tried at once. A `typed` one is
     /// tried when its save comes, after the typing stops.
-    pub fn change_display(
+    pub fn change_display<Failure>(
         &mut self,
         typed: bool,
-        edit: impl FnOnce(&mut Store, &mut Drafts) -> Result<(), String>,
-    ) -> Result<(), String> {
+        edit: impl FnOnce(&mut Store, &mut Drafts) -> Result<(), Failure>,
+    ) -> Result<(), Failure> {
         if !typed {
             self.save();
         }
@@ -935,6 +936,25 @@ mod tests {
             drain(&mut session, &mut actor).as_slice(),
             [Reply::Failed(_)]
         ));
+    }
+
+    #[test]
+    fn a_niri_that_could_not_be_asked_is_said_under_what_is_wrong() {
+        let mut session = Session::new(Platform::InMemory);
+        session.checked_at_start(Err(ReadsError::NotAsked("no such file".into())));
+        assert_eq!(
+            session
+                .health()
+                .and_then(|health| health.details.as_deref()),
+            Some("failed to run `niri validate`: no such file")
+        );
+        session.diagnosed(Err(ReadsError::Refused("unexpected node".into())));
+        assert_eq!(
+            session
+                .health()
+                .and_then(|health| health.details.as_deref()),
+            Some("unexpected node")
+        );
     }
 
     #[test]

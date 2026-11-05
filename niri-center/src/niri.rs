@@ -90,19 +90,48 @@ pub enum Command {
     Watch(bool),
 }
 
+/// Why niri did not do what it was asked, as replies carry it. Replies are
+/// `Clone` and an `io::Error` is not, so a transport failure is its text.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum NiriError {
+    #[error("ipc transport error: {0}")]
+    Transport(String),
+    #[error("niri replied with an error: {0}")]
+    Reply(String),
+    #[error("not a query")]
+    NotAQuery,
+    #[error("could not open niri's event stream. Is niri-center running under niri?")]
+    NoEventStream,
+    /// What the demo says where the desktop app would reach niri.
+    #[error("This talks to niri, so it works in the desktop app but not in this demo.")]
+    DesktopOnly,
+    #[error("The browser did not open the page.")]
+    BrowserRefused,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<crate::ipc::IpcError> for NiriError {
+    fn from(error: crate::ipc::IpcError) -> Self {
+        match error {
+            crate::ipc::IpcError::Transport(source) => Self::Transport(source.to_string()),
+            crate::ipc::IpcError::Reply(words) => Self::Reply(words),
+        }
+    }
+}
+
 /// What the niri actor answers, and what it follows in niri's events.
 #[derive(Debug, Clone)]
 pub enum Reply {
     /// Every connected output, in name order.
-    Outputs(Result<Vec<OutputInfo>, String>),
-    Running(Result<Running, String>),
-    Focused(Result<(), String>),
-    Spawned(Result<(), String>),
+    Outputs(Result<Vec<OutputInfo>, NiriError>),
+    Running(Result<Running, NiriError>),
+    Focused(Result<(), NiriError>),
+    Spawned(Result<(), NiriError>),
     /// Whether a web page could be opened.
-    Opened(Result<(), String>),
+    Opened(Result<(), NiriError>),
     /// The picked window's app ID and title; `None` when cancelled.
-    PickedWindow(Result<Option<(String, String)>, String>),
-    PickedColor(Result<Option<[f64; 3]>, String>),
+    PickedWindow(Result<Option<(String, String)>, NiriError>),
+    PickedColor(Result<Option<[f64; 3]>, NiriError>),
     /// niri read its config again: whether that failed.
     ConfigLoaded {
         failed: bool,
@@ -119,7 +148,7 @@ pub enum Reply {
         text: String,
     },
     /// The event stream could not be opened.
-    LiveError(String),
+    LiveError(NiriError),
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -133,7 +162,7 @@ mod native {
 
     use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-    use super::{Command, OpenWindow, Reply, Running};
+    use super::{Command, NiriError, OpenWindow, Reply, Running};
     use crate::ipc::{self, Client, Event, EventListener};
     use crate::outputs::{self, MonitorInfo, OutputInfo, RawMode};
     use crate::page::Page;
@@ -217,10 +246,7 @@ mod native {
                     *watching = on;
                     if on && !streaming {
                         return replies
-                            .send(Reply::LiveError(
-                                "could not open niri's event stream. Is niri-center running under niri?"
-                                    .to_string(),
-                            ))
+                            .send(Reply::LiveError(NiriError::NoEventStream))
                             .is_ok();
                     }
                     true
@@ -288,29 +314,25 @@ mod native {
     fn request(requests: &mut Option<Client>, command: Command) -> Reply {
         let client = match requests.take() {
             Some(client) => Ok(client),
-            None => Client::connect().map_err(|error| error.to_string()),
+            None => Client::connect(),
         };
         let mut client = match client {
             Ok(client) => client,
-            Err(error) => return failed(&command, error),
+            Err(error) => return failed(&command, error.into()),
         };
         let reply = match command {
             Command::Outputs => Reply::Outputs(outputs_from(&mut client)),
             Command::Running => Reply::Running(running_from(&mut client)),
-            Command::Focus(id) => {
-                Reply::Focused(client.focus_window(id).map_err(|error| error.to_string()))
-            }
-            Command::Spawn(argv) => {
-                Reply::Spawned(client.spawn(argv).map_err(|error| error.to_string()))
-            }
+            Command::Focus(id) => Reply::Focused(client.focus_window(id).map_err(Into::into)),
+            Command::Spawn(argv) => Reply::Spawned(client.spawn(argv).map_err(Into::into)),
             // niri starts the opener, so the browser runs outside the sandbox
             Command::OpenLink(url) => Reply::Opened(
                 client
                     .spawn(vec!["xdg-open".to_string(), url])
-                    .map_err(|error| error.to_string()),
+                    .map_err(Into::into),
             ),
             Command::PickWindow | Command::PickColor | Command::Watch(_) => {
-                return failed(&command, "not a query".to_string());
+                return failed(&command, NiriError::NotAQuery);
             }
         };
         let ok = match &reply {
@@ -335,7 +357,7 @@ mod native {
     }
 
     /// The reply to `command` when niri could not be asked.
-    fn failed(command: &Command, why: String) -> Reply {
+    fn failed(command: &Command, why: NiriError) -> Reply {
         match command {
             Command::Outputs => Reply::Outputs(Err(why)),
             Command::Running => Reply::Running(Err(why)),
@@ -352,10 +374,10 @@ mod native {
     fn pick(command: &Command) -> Reply {
         let mut client = match Client::connect() {
             Ok(client) => client,
-            Err(error) => return failed(command, error.to_string()),
+            Err(error) => return failed(command, error.into()),
         };
         if *command == Command::PickColor {
-            return Reply::PickedColor(client.pick_color().map_err(|error| error.to_string()));
+            return Reply::PickedColor(client.pick_color().map_err(Into::into));
         }
         Reply::PickedWindow(
             client
@@ -368,14 +390,13 @@ mod native {
                         )
                     })
                 })
-                .map_err(|error| error.to_string()),
+                .map_err(Into::into),
         )
     }
 
-    fn outputs_from(client: &mut Client) -> Result<Vec<OutputInfo>, String> {
+    fn outputs_from(client: &mut Client) -> Result<Vec<OutputInfo>, NiriError> {
         let mut found: Vec<OutputInfo> = client
-            .outputs()
-            .map_err(|error| error.to_string())?
+            .outputs()?
             .into_values()
             .map(|output| OutputInfo {
                 description: format!("{} {}", output.make, output.model)
@@ -411,11 +432,10 @@ mod native {
         Ok(found)
     }
 
-    fn running_from(client: &mut Client) -> Result<Running, String> {
+    fn running_from(client: &mut Client) -> Result<Running, NiriError> {
         let outputs = outputs_from(client)?;
         let windows = client
-            .windows()
-            .map_err(|error| error.to_string())?
+            .windows()?
             .into_iter()
             .map(|window| OpenWindow {
                 id: window.id,
@@ -426,8 +446,7 @@ mod native {
             })
             .collect();
         let layers = client
-            .layers()
-            .map_err(|error| error.to_string())?
+            .layers()?
             .into_iter()
             .map(|surface| {
                 format!(
@@ -448,11 +467,7 @@ mod native {
 mod in_browser {
     use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-    use super::{Command, Reply};
-
-    /// What the demo says where the desktop app would reach niri.
-    const DESKTOP_ONLY: &str =
-        "This talks to niri, so it works in the desktop app but not in this demo.";
+    use super::{Command, NiriError, Reply};
 
     /// The demo's niri: its data, and no event stream.
     #[derive(Default)]
@@ -472,16 +487,16 @@ mod in_browser {
                 let reply = match command {
                     Command::Outputs => Reply::Outputs(Ok(crate::demo::outputs())),
                     Command::Running => Reply::Running(Ok(crate::demo::running())),
-                    Command::Focus(_) => Reply::Focused(Err(DESKTOP_ONLY.to_string())),
-                    Command::Spawn(_) => Reply::Spawned(Err(DESKTOP_ONLY.to_string())),
+                    Command::Focus(_) => Reply::Focused(Err(NiriError::DesktopOnly)),
+                    Command::Spawn(_) => Reply::Spawned(Err(NiriError::DesktopOnly)),
                     Command::OpenLink(url) => Reply::Opened(
                         web_sys::window()
                             .and_then(|window| window.open_with_url_and_target(&url, "_blank").ok())
                             .map(|_| ())
-                            .ok_or_else(|| "The browser did not open the page.".to_string()),
+                            .ok_or(NiriError::BrowserRefused),
                     ),
-                    Command::PickWindow => Reply::PickedWindow(Err(DESKTOP_ONLY.to_string())),
-                    Command::PickColor => Reply::PickedColor(Err(DESKTOP_ONLY.to_string())),
+                    Command::PickWindow => Reply::PickedWindow(Err(NiriError::DesktopOnly)),
+                    Command::PickColor => Reply::PickedColor(Err(NiriError::DesktopOnly)),
                     // the demo's Events page shows its samples
                     Command::Watch(_) => continue,
                 };
@@ -496,7 +511,79 @@ mod in_browser {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use super::{Actor, Command, Reply};
+    use super::{Actor, Command, NiriError, Reply};
+    use crate::ipc::IpcError;
+
+    #[test]
+    fn a_failed_request_reads_as_the_ipc_error_it_came_from() {
+        assert_eq!(
+            NiriError::from(IpcError::Transport(std::io::Error::other("socket gone"))).to_string(),
+            "ipc transport error: socket gone"
+        );
+        assert_eq!(
+            NiriError::from(IpcError::Reply("no such window".into())).to_string(),
+            "niri replied with an error: no such window"
+        );
+    }
+
+    #[test]
+    fn what_no_niri_could_answer_is_said_in_words() {
+        assert_eq!(NiriError::NotAQuery.to_string(), "not a query");
+        assert_eq!(
+            NiriError::NoEventStream.to_string(),
+            "could not open niri's event stream. Is niri-center running under niri?"
+        );
+        assert_eq!(
+            NiriError::DesktopOnly.to_string(),
+            "This talks to niri, so it works in the desktop app but not in this demo."
+        );
+        assert_eq!(
+            NiriError::BrowserRefused.to_string(),
+            "The browser did not open the page."
+        );
+    }
+
+    #[test]
+    fn without_niri_each_command_is_answered_with_the_failure_to_reach_it() {
+        if std::env::var_os("NIRI_SOCKET").is_some() {
+            return;
+        }
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (commands, received) = tokio::sync::mpsc::unbounded_channel();
+        let (replies, mut answers) = tokio::sync::mpsc::unbounded_channel();
+        for command in [
+            Command::Outputs,
+            Command::Running,
+            Command::Focus(1),
+            Command::Spawn(vec!["true".to_string()]),
+            Command::OpenLink("https://example.org".to_string()),
+            Command::Watch(true),
+        ] {
+            commands.send(command).unwrap();
+        }
+        drop(commands);
+        runtime.block_on(Actor::new().run(received, replies));
+        let mut all = Vec::new();
+        while let Ok(reply) = answers.try_recv() {
+            all.push(reply);
+        }
+        assert!(
+            matches!(
+                all.as_slice(),
+                [
+                    Reply::Outputs(Err(NiriError::Transport(_))),
+                    Reply::Running(Err(NiriError::Transport(_))),
+                    Reply::Focused(Err(NiriError::Transport(_))),
+                    Reply::Spawned(Err(NiriError::Transport(_))),
+                    Reply::Opened(Err(NiriError::Transport(_))),
+                    Reply::LiveError(NiriError::NoEventStream),
+                ]
+            ),
+            "{all:?}"
+        );
+    }
 
     #[test]
     fn the_actor_answers_from_the_running_niri_and_ends_with_its_senders() {

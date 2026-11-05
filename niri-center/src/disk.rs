@@ -199,7 +199,7 @@ impl Disk {
 
     /// Whether niri reads the config at `main` as it is on disk: its words
     /// when it does not. In memory there is no niri to ask.
-    pub fn check_on_disk(&self, main: &Path) -> Result<(), String> {
+    pub fn check_on_disk(&self, main: &Path) -> Result<(), validate::ReadsError> {
         match &self.backend {
             Backend::Files(_) => validate::reads(main),
             Backend::Memory(_) => Ok(()),

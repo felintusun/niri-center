@@ -2,7 +2,7 @@
 
 use iced::widget::{Row, button, column, pick_list, row, slider, text, text_input};
 use iced::{Alignment, Length, Task};
-use niri_center::animations::{self, Animation, Curve};
+use niri_center::animations::{self, Animation, Curve, CurveError};
 use niri_center::page::Page;
 use niri_center::words::short_number;
 
@@ -72,7 +72,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
     // config at once; what cannot go in yet says why under the editor
     if let Some(store) = &mut state.session.store {
         let written = if state.animation.spring {
-            state.animation.set_spring(store)
+            state.animation.set_spring(store).map_err(CurveError::from)
         } else {
             state.animation.set_curve(store)
         };
@@ -277,7 +277,7 @@ pub fn page<'app>(state: &'app App, store: &Store) -> El<'app> {
         rows.push(pad(editor.into()));
     }
     if let Some(problem) = &state.animation_problem {
-        rows.push(pad(text(problem.clone())
+        rows.push(pad(text(problem.to_string())
             .size(12)
             .style(theme::error)
             .into()));

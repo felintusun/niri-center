@@ -128,12 +128,19 @@ pub fn dedent(text: &str) -> String {
         .join("\n")
 }
 
+/// Why a `screenshot-path` pattern gives no file name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum PatternError {
+    #[error("The name has a % code niri cannot fill in.")]
+    UnknownCode,
+}
+
 /// The file name niri would write now for a `screenshot-path` pattern, or
 /// why it cannot.
-pub fn expand_strftime(pattern: &str) -> Result<String, String> {
+pub fn expand_strftime(pattern: &str) -> Result<String, PatternError> {
     use chrono::format::{Item, StrftimeItems};
     if StrftimeItems::new(pattern).any(|item| matches!(item, Item::Error)) {
-        return Err("The name has a % code niri cannot fill in.".to_string());
+        return Err(PatternError::UnknownCode);
     }
     Ok(chrono::Local::now().format(pattern).to_string())
 }
@@ -157,7 +164,10 @@ mod tests {
             name.starts_with("Screenshot 2") && name.ends_with(".png"),
             "{name}"
         );
-        assert!(expand_strftime("bad %Q").is_err());
+        assert_eq!(
+            expand_strftime("bad %Q").unwrap_err().to_string(),
+            "The name has a % code niri cannot fill in."
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Every animation niri has, with its default, the easing curves niri
 //! accepts, and the Animations page's editor.
 
-use crate::store::Store;
+use crate::store::{Store, StoreError};
 use crate::words::short_number;
 
 /// An easing curve niri accepts (verified against `niri validate`).
@@ -195,6 +195,17 @@ impl Default for Editor {
     }
 }
 
+/// Why the editor's easing curve did not go into the config.
+#[derive(Debug, thiserror::Error)]
+pub enum CurveError {
+    #[error("Enter a duration from 1 to 10000 milliseconds.")]
+    Duration,
+    #[error("A custom curve needs four numbers; the first and third run from 0 to 1.")]
+    Bezier,
+    #[error(transparent)]
+    Store(#[from] StoreError),
+}
+
 impl Editor {
     /// `animation` as the config sets it, or as niri does by default when
     /// the config leaves it alone.
@@ -249,14 +260,14 @@ impl Editor {
 
     /// Write the easing curve from the fields. Gives what happened, or
     /// what is wrong with the fields.
-    pub fn set_curve(&self, store: &mut Store) -> Result<String, String> {
+    pub fn set_curve(&self, store: &mut Store) -> Result<String, CurveError> {
         let duration = self
             .duration
             .trim()
             .parse::<u32>()
             .ok()
             .filter(|ms| (1..=10_000).contains(ms))
-            .ok_or("Enter a duration from 1 to 10000 milliseconds.")?;
+            .ok_or(CurveError::Duration)?;
         let points = if self.curve == Curve::CubicBezier {
             let parsed: Vec<f32> = self
                 .bezier
@@ -269,24 +280,17 @@ impl Editor {
                 {
                     Some(points)
                 }
-                _ => {
-                    return Err(
-                        "A custom curve needs four numbers; the first and third run from 0 to 1."
-                            .to_string(),
-                    );
-                }
+                _ => return Err(CurveError::Bezier),
             }
         } else {
             None
         };
-        store
-            .set_easing(
-                self.animation.name(),
-                self.curve.name(),
-                points,
-                Some(duration),
-            )
-            .map_err(|error| error.to_string())?;
+        store.set_easing(
+            self.animation.name(),
+            self.curve.name(),
+            points,
+            Some(duration),
+        )?;
         Ok(format!(
             "{} now eases over {duration} ms.",
             self.animation.label()
@@ -294,7 +298,7 @@ impl Editor {
     }
 
     /// Write the spring in the fields, keeping the config's epsilon.
-    pub fn set_spring(&self, store: &mut Store) -> Result<String, String> {
+    pub fn set_spring(&self, store: &mut Store) -> Result<String, StoreError> {
         let epsilon = store.spring_params(self.animation.name()).map_or_else(
             || match self.animation.default_motion() {
                 Motion::Spring(spring) => spring.epsilon,
@@ -308,17 +312,13 @@ impl Editor {
             stiffness: self.stiffness.round(),
             epsilon,
         };
-        store
-            .set_spring_params(self.animation.name(), spring)
-            .map_err(|error| error.to_string())?;
+        store.set_spring_params(self.animation.name(), spring)?;
         Ok(format!("{} now uses a spring.", self.animation.label()))
     }
 
     /// Turn the animation on or off.
-    pub fn set_playing(&self, store: &mut Store, on: bool) -> Result<String, String> {
-        store
-            .set_animation_off(self.animation.name(), !on)
-            .map_err(|error| error.to_string())?;
+    pub fn set_playing(&self, store: &mut Store, on: bool) -> Result<String, StoreError> {
+        store.set_animation_off(self.animation.name(), !on)?;
         let name = self.animation.label();
         Ok(if on {
             format!("{name} plays again.")
@@ -328,13 +328,68 @@ impl Editor {
     }
 
     /// Take the animation out of the config: niri's default applies.
-    pub fn reset(&self, store: &mut Store) -> Result<String, String> {
-        store
-            .reset_animation(self.animation.name())
-            .map_err(|error| error.to_string())?;
+    pub fn reset(&self, store: &mut Store) -> Result<String, StoreError> {
+        store.reset_animation(self.animation.name())?;
         Ok(format!(
             "{} is back to niri's default.",
             self.animation.label()
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn store() -> Store {
+        Store::read(PathBuf::from("/niri/config.kdl"), |_| {
+            Ok("layout {\n}\n".to_string())
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn fields_that_cannot_be_written_say_what_they_take() {
+        let mut config = store();
+        let before = config.document().to_string();
+        for duration in ["", "0", "10001", "soon"] {
+            let editor = Editor {
+                duration: duration.into(),
+                ..Editor::default()
+            };
+            assert_eq!(
+                editor.set_curve(&mut config).unwrap_err().to_string(),
+                "Enter a duration from 1 to 10000 milliseconds.",
+                "{duration:?}"
+            );
+        }
+        for bezier in [
+            ["1.5", "0", "0.5", "1"],
+            ["0.5", "0", "-1", "1"],
+            ["0.5", "0", "0.5", "steep"],
+        ] {
+            let editor = Editor {
+                duration: "200".into(),
+                curve: Curve::CubicBezier,
+                bezier: bezier.map(String::from),
+                ..Editor::default()
+            };
+            assert_eq!(
+                editor.set_curve(&mut config).unwrap_err().to_string(),
+                "A custom curve needs four numbers; the first and third run from 0 to 1.",
+                "{bezier:?}"
+            );
+        }
+        assert_eq!(config.document().to_string(), before);
+    }
+
+    #[test]
+    fn a_store_failure_on_a_curve_reads_as_the_store_says_it() {
+        assert_eq!(
+            CurveError::from(StoreError::NoBinds).to_string(),
+            "no `binds` block in the loaded config set"
+        );
     }
 }

@@ -4,12 +4,12 @@
 use std::collections::VecDeque;
 
 use iced::Task;
-use niri_center::animations::{self, Animation, Editor};
+use niri_center::animations::{self, Animation, CurveError, Editor};
 use niri_center::color::GradientEnd;
 use niri_center::disk::actor::Command;
 use niri_center::forms::{BindingForm, RuleDraft, follow};
 use niri_center::motion::Played;
-use niri_center::niri::{self, OpenWindow, Running};
+use niri_center::niri::{self, NiriError, OpenWindow, Running};
 use niri_center::outputs::OutputInfo;
 use niri_center::page::Page;
 use niri_center::session::{Platform, Session};
@@ -59,10 +59,10 @@ pub fn outcome(result: Result<(), StoreError>, done: impl Into<String>) -> Optio
 }
 
 /// The status after an edit that says what it did, or what is wrong.
-pub fn said(result: Result<String, String>) -> Option<StatusLine> {
+pub fn said(result: Result<String, StoreError>) -> Option<StatusLine> {
     match result {
         Ok(done) => info(done),
-        Err(failure) => error(failure),
+        Err(failure) => error(failure.to_string()),
     }
 }
 
@@ -145,13 +145,13 @@ pub struct App {
     pub animation: Editor,
     pub motions: Motions,
     /// Why the editor's motion is not in the config: a field it cannot read.
-    pub animation_problem: Option<String>,
+    pub animation_problem: Option<CurveError>,
     pub rules: pages::rules::State,
     // displays, windows, events
     pub outputs: Vec<OutputInfo>,
     pub displays: pages::displays::State,
     pub running: Option<Running>,
-    pub running_error: Option<String>,
+    pub running_error: Option<NiriError>,
     pub live_events: VecDeque<(niri_center::niri::EventKind, String)>,
     // files
     pub files: pages::files::State,
