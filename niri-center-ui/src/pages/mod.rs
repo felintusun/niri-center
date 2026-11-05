@@ -104,7 +104,7 @@ fn heading(state: &App) -> El<'_> {
 
 /// One choice of a few, side by side in one outlined strip: the chosen one
 /// filled.
-fn segments<'view>(choices: Row<'view, Message>) -> El<'view> {
+fn segments(choices: Row<'_, Message>) -> El<'_> {
     container(choices)
         .padding(1)
         .clip(true)

@@ -28,10 +28,10 @@ mod engine;
 use engine::indentation;
 pub use engine::{Block, Override};
 
-const LAYOUT: [Block<'static>; 1] = [Block::named("layout")];
-const TOUCHPAD: [Block<'static>; 2] = [Block::named("input"), Block::named("touchpad")];
-const KEYBOARD: [Block<'static>; 2] = [Block::named("input"), Block::named("keyboard")];
-const XKB: [Block<'static>; 3] = [
+const LAYOUT: [Block; 1] = [Block::named("layout")];
+const TOUCHPAD: [Block; 2] = [Block::named("input"), Block::named("touchpad")];
+const KEYBOARD: [Block; 2] = [Block::named("input"), Block::named("keyboard")];
+const XKB: [Block; 3] = [
     Block::named("input"),
     Block::named("keyboard"),
     Block::named("xkb"),
@@ -409,7 +409,7 @@ impl Store {
                 action_raw: child
                     .children
                     .first()
-                    .map(|action| action.raw(doc).to_string())
+                    .map(|action| doc.raw(action.node_span).to_string())
                     .unwrap_or_default(),
                 file: label(target),
                 included: target != Target::Main,
@@ -532,7 +532,7 @@ impl Store {
                     .children
                     .iter()
                     .partition(|child| matches!(child.name.as_str(), "match" | "exclude"));
-                let text = |child: &&Node| child.raw(doc).to_string();
+                let text = |child: &&Node| doc.raw(child.node_span).to_string();
                 Some(WindowRuleRow {
                     matchers: criteria
                         .iter()
@@ -681,7 +681,7 @@ impl Store {
     /// The window rule at `index` exactly as written, for editing as text.
     pub fn window_rule_source(&self, index: usize) -> Option<String> {
         let (target, node) = self.window_rules().nth(index)?;
-        Some(node.raw(self.doc(target).ok()?).to_string())
+        Some(self.doc(target).ok()?.raw(node.node_span).to_string())
     }
 
     /// Replace the window rule at `index` with `text`, which must be one
@@ -709,7 +709,7 @@ impl Store {
             !node.disabled
                 && self
                     .doc(target)
-                    .is_ok_and(|doc| node.raw(doc).contains("niri-center"))
+                    .is_ok_and(|doc| doc.raw(node.node_span).contains("niri-center"))
         })
     }
 
@@ -1462,7 +1462,7 @@ fn holds_only_its_lines(doc: &Document, node: &Node) -> bool {
             .filter(|character| !character.is_whitespace() && *character != ';')
             .collect()
     };
-    significant(node.raw(doc)) == significant(&parts)
+    significant(doc.raw(node.node_span)) == significant(&parts)
 }
 
 /// A node's tokens as the parser read them, children in braces.
@@ -1470,13 +1470,13 @@ fn written_parts(doc: &Document, node: &Node, out: &mut String) {
     out.push_str(&node.name);
     for value in &node.args {
         out.push(' ');
-        out.push_str(value.raw(doc));
+        out.push_str(doc.raw(value.span));
     }
     for prop in &node.props {
         out.push(' ');
         out.push_str(&prop.name);
         out.push('=');
-        out.push_str(prop.value.raw(doc));
+        out.push_str(doc.raw(prop.value.span));
     }
     if node.block.is_some() {
         out.push('{');

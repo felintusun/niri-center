@@ -435,7 +435,7 @@ impl Widget<Message, Theme, Renderer> for DropIn<'_> {
 /// A bar running down `seconds_left` of `total`, smoothly between the
 /// seconds it is told, in the theme's `pending` color. With motion off it
 /// steps once a second.
-pub fn countdown<'view>(seconds_left: u32, total: u32, motion: Option<Played>) -> El<'view> {
+pub fn countdown(seconds_left: u32, total: u32, motion: Option<Played>) -> El<'static> {
     Element::new(Countdown {
         seconds_left,
         total: total.max(1),

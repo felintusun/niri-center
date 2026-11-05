@@ -205,11 +205,11 @@ pub fn page(state: &App) -> El<'_> {
 
 /// Where a display sits, as two numbers to type: for keyboards, and for
 /// a place the drag cannot reach.
-fn position_row<'app>(
-    state: &'app App,
-    output: &'app niri_center::outputs::OutputInfo,
+fn position_row(
+    state: &App,
+    output: &niri_center::outputs::OutputInfo,
     rects: &[(String, niri_center::outputs::MonitorInfo)],
-) -> El<'app> {
+) -> El<'static> {
     let (position_x, position_y) = rects
         .iter()
         .find(|(name, _)| *name == output.name)
@@ -309,7 +309,7 @@ pub fn trial(state: &App) -> Option<El<'_>> {
 /// One display's settings, laid out for `width`.
 fn output_rows<'app>(
     state: &'app App,
-    output: &'app niri_center::outputs::OutputInfo,
+    output: &niri_center::outputs::OutputInfo,
     rects: &[(String, niri_center::outputs::MonitorInfo)],
     width: f32,
 ) -> El<'app> {

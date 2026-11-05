@@ -305,14 +305,14 @@ pub(crate) fn config_toggle(state: &App) -> (Option<Message>, &'static str) {
 }
 
 /// A 1 px line across, between parts of the window.
-fn hairline_across<'view>() -> El<'view> {
+fn hairline_across() -> El<'static> {
     container(space().height(1).width(Length::Fill))
         .style(theme::hairline)
         .into()
 }
 
 /// A 1 px line down, between columns.
-fn hairline_down<'view>() -> El<'view> {
+fn hairline_down() -> El<'static> {
     container(space().width(1).height(Length::Fill))
         .style(theme::hairline)
         .into()
@@ -551,10 +551,10 @@ impl Hits {
 
 /// What the header search found, in place of the page: on the page shown
 /// first, then everywhere.
-fn search_results<'app>(state: &'app App, query: &str, selected: usize) -> El<'app> {
+fn search_results(state: &App, query: &str, selected: usize) -> El<'static> {
     let hits = Hits::of(state, query);
     let skip = hits.here.len();
-    let rows = |hits: Vec<Hit>, first: usize| -> Vec<El<'app>> {
+    let rows = |hits: Vec<Hit>, first: usize| -> Vec<El<'static>> {
         hits.into_iter()
             .enumerate()
             .map(|(index, hit)| {
@@ -596,7 +596,7 @@ fn search_results<'app>(state: &'app App, query: &str, selected: usize) -> El<'a
 }
 
 /// A full-width strip under the header, tinted with one of the colors.
-fn strip<'view>(content: Column<'view, Message>, tint: fn(&theme::Colors) -> Color) -> El<'view> {
+fn strip(content: Column<'_, Message>, tint: fn(&theme::Colors) -> Color) -> El<'_> {
     container(content.spacing(8))
         .padding([8, 16])
         .width(Length::Fill)
@@ -778,7 +778,7 @@ fn dialog_card(content: El<'_>, window_height: f32) -> El<'_> {
         .into()
 }
 
-fn overlay_card<'view>(content: Column<'view, Message>) -> El<'view> {
+fn overlay_card(content: Column<'_, Message>) -> El<'_> {
     container(content.spacing(8).padding(16))
         .width(Length::Fixed(560.0))
         .style(theme::popup)

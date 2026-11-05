@@ -3,6 +3,7 @@
 //! spring response. The animations and curves themselves are
 //! `niri_center::animations`.
 
+use crate::message::Message;
 use iced::widget::canvas::{self, Canvas, Path, Program};
 use iced::{Length, Point, Rectangle, Renderer, Theme, mouse};
 use niri_center::animations::Curve;
@@ -67,10 +68,7 @@ impl CurvesProgram {
     }
 }
 
-impl<Message> Program<Message, Theme, Renderer> for CurvesProgram
-where
-    Message: From<Bezier> + 'static,
-{
+impl Program<Message, Theme, Renderer> for CurvesProgram {
     type State = CurvesState;
 
     fn update(
@@ -228,7 +226,7 @@ pub struct SpringProgram {
     pub stiffness: f32,
 }
 
-impl<Message> Program<Message, Theme, Renderer> for SpringProgram {
+impl Program<Message, Theme, Renderer> for SpringProgram {
     type State = ();
 
     fn draw(
@@ -292,20 +290,14 @@ impl<Message> Program<Message, Theme, Renderer> for SpringProgram {
 }
 
 /// Canvas previewing niri's easing curves, with the custom one editable.
-pub fn curves_canvas<Message>(selected: Curve, custom: [f32; 4]) -> Canvas<CurvesProgram, Message>
-where
-    Message: From<Bezier> + 'static,
-{
+pub fn curves_canvas(selected: Curve, custom: [f32; 4]) -> Canvas<CurvesProgram, Message> {
     Canvas::new(CurvesProgram { selected, custom })
         .width(Length::Fill)
         .height(Length::Fixed(260.0))
 }
 
 /// Canvas previewing a spring's response trace.
-pub fn spring_canvas<Message>(
-    damping_ratio: f32,
-    stiffness: f32,
-) -> Canvas<SpringProgram, Message> {
+pub fn spring_canvas(damping_ratio: f32, stiffness: f32) -> Canvas<SpringProgram, Message> {
     Canvas::new(SpringProgram {
         damping_ratio,
         stiffness,

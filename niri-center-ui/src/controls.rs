@@ -234,11 +234,11 @@ pub fn control<'app>(
     }
 }
 
-fn on_off_list<'view>(
+fn on_off_list(
     current: OnOff,
     default: &str,
-    make: impl Fn(Edit) -> Message + 'view,
-) -> El<'view> {
+    make: impl Fn(Edit) -> Message + 'static,
+) -> El<'static> {
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Item(OnOff, String);
     impl std::fmt::Display for Item {
@@ -267,12 +267,12 @@ fn on_off_list<'view>(
 /// A pick list of `(value, label)` options with niri's default first (it
 /// removes the setting). A current value missing from the options is kept,
 /// so the list never hides what the config says.
-pub fn choice_list<'view>(
+pub fn choice_list(
     options: Vec<(String, String)>,
     current: Option<&str>,
     default: &str,
-    make: impl Fn(Edit) -> Message + 'view,
-) -> El<'view> {
+    make: impl Fn(Edit) -> Message + 'static,
+) -> El<'static> {
     let mut items = vec![Labeled {
         value: None,
         label: default.to_string(),
@@ -301,13 +301,13 @@ pub fn choice_list<'view>(
 }
 
 /// A number with a slider for settings with a short range.
-fn slider_field<'view>(
+fn slider_field(
     value: &str,
     min: f64,
     max: f64,
     default: &str,
-    make: impl Fn(Edit) -> Message + Clone + 'view,
-) -> El<'view> {
+    make: impl Fn(Edit) -> Message + Clone + 'static,
+) -> El<'static> {
     let position = value
         .parse::<f64>()
         .ok()
@@ -337,7 +337,7 @@ fn slider_field<'view>(
 }
 
 /// A square of `color` with a hairline edge.
-fn swatch<'view>(color: Option<Color>, size: f32) -> El<'view> {
+fn swatch(color: Option<Color>, size: f32) -> El<'static> {
     container(space().width(size).height(size))
         .style(move |theme: &Theme| {
             let colors = theme::colors(theme);
@@ -356,11 +356,7 @@ fn swatch<'view>(color: Option<Color>, size: f32) -> El<'view> {
 
 /// A swatch that opens the picker for `field`, the picked color going to
 /// `destination`.
-fn swatch_button<'view>(
-    color: Option<Color>,
-    field: ColorField,
-    destination: Destination,
-) -> El<'view> {
+fn swatch_button(color: Option<Color>, field: ColorField, destination: Destination) -> El<'static> {
     button(swatch(color, 22.0))
         .padding(0)
         .style(button::text)
@@ -368,13 +364,13 @@ fn swatch_button<'view>(
         .into()
 }
 
-fn color_field<'app>(
-    state: &'app App,
+fn color_field(
+    state: &App,
     key: &DraftKey,
     value: &str,
-    default: &'app str,
-    make: impl Fn(Edit) -> Message + Clone + 'app,
-) -> El<'app> {
+    default: &str,
+    make: impl Fn(Edit) -> Message + Clone + 'static,
+) -> El<'static> {
     let shown = color::parse(value).or_else(|| {
         value
             .trim()
@@ -418,10 +414,10 @@ fn color_field<'app>(
 
 /// The picker under an open color field: the canvas, a few colors to start
 /// from, picking from the screen through niri, and Done.
-fn picker_panel<'view>(
+fn picker_panel(
     hsva: color::Hsva,
-    make: impl Fn(Edit) -> Message + Clone + 'view,
-) -> El<'view> {
+    make: impl Fn(Edit) -> Message + Clone + 'static,
+) -> El<'static> {
     let mut swatches = Row::new().spacing(6).align_y(Alignment::Center);
     for hex in color::SWATCHES {
         let make = make.clone();
@@ -463,7 +459,7 @@ fn picker_panel<'view>(
 }
 
 /// What niri says about a config it cannot read, as it says it.
-pub fn diagnostics<'view>(words: &str) -> El<'view> {
+pub fn diagnostics(words: &str) -> El<'static> {
     container(
         text(words.trim_end().to_string())
             .size(12)
@@ -475,13 +471,13 @@ pub fn diagnostics<'view>(words: &str) -> El<'view> {
     .into()
 }
 
-fn gradient_field<'app>(
-    state: &'app App,
+fn gradient_field(
+    state: &App,
     key: &DraftKey,
     current: Option<&str>,
-    default: &'app str,
-    make: impl Fn(Edit) -> Message + Clone + 'app,
-) -> El<'app> {
+    default: &str,
+    make: impl Fn(Edit) -> Message + Clone + 'static,
+) -> El<'static> {
     let Some(gradient) = current.and_then(Gradient::parse) else {
         return button(text("Add a gradient").size(12))
             .padding([3, 10])
@@ -605,14 +601,14 @@ fn fraction(name: &str, value: &str, extent: f32) -> f32 {
     .clamp(0.0, 1.0)
 }
 
-fn size_list<'app>(
-    state: &'app App,
+fn size_list(
+    state: &App,
     key: &DraftKey,
     axis: Axis,
     current: Option<String>,
-    default: &'app str,
-    make: impl Fn(Edit) -> Message + Clone + 'app,
-) -> El<'app> {
+    default: &str,
+    make: impl Fn(Edit) -> Message + Clone + 'static,
+) -> El<'static> {
     let set = current.is_some();
     let text_now = state
         .session
@@ -722,12 +718,12 @@ fn size_list<'app>(
     list.push(add.wrap()).into()
 }
 
-fn default_size<'app>(
-    state: &'app App,
+fn default_size(
+    state: &App,
     current: Option<&str>,
-    default: &'app str,
-    make: impl Fn(Edit) -> Message + 'app,
-) -> El<'app> {
+    default: &str,
+    make: impl Fn(Edit) -> Message + 'static,
+) -> El<'static> {
     let label_of = |text: &str| {
         let entries = sizes(text);
         entries.first().map_or_else(
@@ -771,17 +767,17 @@ fn default_size<'app>(
 }
 
 /// An × that removes one entry of a list; the tooltip says which.
-pub fn remove_button<'view>(what: String, on_press: Message) -> El<'view> {
+pub fn remove_button(what: String, on_press: Message) -> El<'static> {
     icon_button(crate::icons::Icon::Remove, 12.0, what, on_press)
 }
 
 /// A bare icon that does `on_press`, named by its tooltip.
-pub fn icon_button<'view>(
+pub fn icon_button(
     icon: crate::icons::Icon,
     size: f32,
     what: String,
     on_press: Message,
-) -> El<'view> {
+) -> El<'static> {
     iced::widget::tooltip(
         button(crate::icons::icon(icon, size))
             .padding(8)
@@ -924,13 +920,13 @@ fn options_field<'app>(
     .into()
 }
 
-fn file_field<'text>(
+fn file_field(
     key: &DraftKey,
     value: &str,
-    example: &'text str,
-    default: &'text str,
-    make: impl Fn(Edit) -> Message + Clone + 'text,
-) -> El<'text> {
+    example: &str,
+    default: &str,
+    make: impl Fn(Edit) -> Message + Clone + 'static,
+) -> El<'static> {
     let placeholder = if default.is_empty() {
         example.to_string()
     } else {
@@ -951,13 +947,13 @@ fn file_field<'text>(
     .into()
 }
 
-fn screenshot_field<'text>(
+fn screenshot_field(
     state: &App,
     key: &DraftKey,
     value: &str,
-    default: &'text str,
-    make: impl Fn(Edit) -> Message + Clone + 'text,
-) -> El<'text> {
+    default: &str,
+    make: impl Fn(Edit) -> Message + Clone + 'static,
+) -> El<'static> {
     let saving = value != NO_FILE;
     let toggle = {
         let make = make.clone();

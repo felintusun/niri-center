@@ -39,6 +39,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn iter_all_walks_in_the_order_written() {
+        let source = "a {\n  b {\n    c\n  }\n  d\n}\ne {\n  f\n}\n";
+        let doc = parse_document(source).unwrap();
+        let names: Vec<&str> = doc.iter_all().map(|node| node.name.as_str()).collect();
+        assert_eq!(names, ["a", "b", "c", "d", "e", "f"]);
+    }
+
+    #[test]
     fn raw_strings_in_props_and_args() {
         let src = "window-rule {\n    match app-id=r##\"^org\\.wezfurlong\\.wezterm$\"## title=r#\"(?i)^(Password)\"#\n    default-column-width {}\n}\n";
         let doc = parse_document(src).unwrap();

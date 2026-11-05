@@ -4,6 +4,7 @@
 //! in the config are shaded and numbered by how many combos end on them;
 //! clicking a key filters the keybind list to combos ending on that key.
 
+use crate::message::Message;
 use iced::widget::canvas::{self, Canvas, Program};
 use iced::{Color, Length, Point, Rectangle, Renderer, Theme, mouse};
 use std::collections::HashMap;
@@ -98,10 +99,7 @@ fn estimated_width(content: &str, size: f32) -> f32 {
     content.chars().count() as f32 * size * 0.6
 }
 
-impl<Message> Program<Message, Theme, Renderer> for KeyboardProgram<'_>
-where
-    Message: From<KeyClicked> + 'static,
-{
+impl Program<Message, Theme, Renderer> for KeyboardProgram<'_> {
     type State = crate::icons::Kept;
 
     fn update(
@@ -242,14 +240,11 @@ impl KeyboardProgram<'_> {
 }
 
 /// Canvas of the visualizer; height is bounded by the caller.
-pub fn keyboard_canvas<Message>(
+pub fn keyboard_canvas(
     picture: &Picture,
     counts: HashMap<String, usize>,
     selected: Option<String>,
-) -> Canvas<KeyboardProgram<'_>, Message>
-where
-    Message: From<KeyClicked> + 'static,
-{
+) -> Canvas<KeyboardProgram<'_>, Message> {
     Canvas::new(KeyboardProgram {
         picture,
         counts,

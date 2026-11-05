@@ -15,15 +15,15 @@ use crate::{El, controls, highlight, theme};
 
 /// Rules the library has for a window's app that the config lacks,
 /// offered beside it, each with Add. `None` when there are none.
-pub fn suggestions<'app>(state: &'app App, app_id: &str) -> Option<El<'app>> {
+pub fn suggestions(state: &App, app_id: &str) -> Option<El<'static>> {
     let found = niri_center::library::missing(in_config(state), app_id);
     let app = LIBRARY.get(*found.first()?)?.app?.name();
     let colors = state.colors();
-    let rows: Vec<El<'app>> = found
+    let rows: Vec<El<'static>> = found
         .into_iter()
         .filter_map(|index| Some((index, LIBRARY.get(index)?)))
         .map(|(index, rule)| {
-            let action: El<'app> = controls::small(
+            let action: El<'static> = controls::small(
                 "Add this rule",
                 Message::Rules(rules::Message::AddLibraryRule(index)),
             )

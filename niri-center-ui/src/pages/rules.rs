@@ -538,7 +538,7 @@ fn your_rules(state: &App, beside: bool) -> El<'_> {
 
 /// The way back up from the level open: all apps, then the app a rule is
 /// shown under.
-fn crumbs<'view>(app: Option<&Entry>) -> El<'view> {
+fn crumbs(app: Option<&Entry>) -> El<'static> {
     let link = |label: String, message: Message| {
         button(text(label).size(13))
             .padding(0)
@@ -558,12 +558,12 @@ fn crumbs<'view>(app: Option<&Entry>) -> El<'view> {
 
 /// Every app with windows open or rules, then the rules for every window
 /// and those by title or state: one row each, with how many of each.
-fn index_view<'app>(
-    state: &'app App,
+fn index_view(
+    state: &App,
     index: &[Entry],
     rules: &[niri_center::store::WindowRuleRow],
     shown: Option<&Who>,
-) -> El<'app> {
+) -> El<'static> {
     let mut pick: button::Button<'_, AppMessage> = button(
         text(if state.rules.picking {
             "Waiting for a click"
@@ -578,7 +578,7 @@ fn index_view<'app>(
         pick = pick.on_press(AppMessage::Rules(Message::PickWindow));
     }
     let have = crate::library::in_config(state);
-    let listed: Vec<El<'app>> = index
+    let listed: Vec<El<'static>> = index
         .iter()
         .map(|entry| {
             // one line each: the name, then how much it has
@@ -639,10 +639,10 @@ fn index_view<'app>(
 /// A rule's name and where it is written. Within an app, who it is for
 /// goes without saying, so it says what it does and what else picks its
 /// windows (a title, a state).
-fn rule_heading<'view>(
+fn rule_heading(
     rule: &niri_center::store::WindowRuleRow,
     within_app: bool,
-) -> Column<'view, AppMessage> {
+) -> Column<'static, AppMessage> {
     let name = text(if within_app {
         niri_center::rules::what(rule)
     } else {
@@ -663,7 +663,7 @@ fn rule_heading<'view>(
 }
 
 /// A rule in a list, to open it.
-fn rule_row<'view>(state: &App, rule: &niri_center::store::WindowRuleRow, at: usize) -> El<'view> {
+fn rule_row(state: &App, rule: &niri_center::store::WindowRuleRow, at: usize) -> El<'static> {
     button(rule_heading(rule, false))
         .padding([8, 12])
         .width(Length::Fill)
@@ -674,12 +674,12 @@ fn rule_row<'view>(state: &App, rule: &niri_center::store::WindowRuleRow, at: us
 
 /// A rule on its app's page: its name, its lines, and what can be done to
 /// it, so changing it is one click away.
-fn rule_block<'app>(
-    state: &'app App,
+fn rule_block(
+    state: &App,
     rule: &niri_center::store::WindowRuleRow,
     at: usize,
     within_app: bool,
-) -> El<'app> {
+) -> El<'static> {
     rule_heading(rule, within_app)
         .push(rule_text(state, rule))
         .push(rule_actions(rule, at))
@@ -705,12 +705,12 @@ fn place(rule: &niri_center::store::WindowRuleRow, within_app: bool) -> String {
 /// One app: what it is, its open windows, its rules in the order niri
 /// applies them, the rules from elsewhere that reach its windows, and
 /// what the library suggests for it.
-fn app_card<'app>(
-    state: &'app App,
+fn app_card(
+    state: &App,
     entry: &Entry,
     rules: &[niri_center::store::WindowRuleRow],
     windows: &[OpenWindow],
-) -> El<'app> {
+) -> El<'static> {
     // who a rule is for goes without saying, but for those by title
     let within_app = matches!(entry.who, Who::App(_) | Who::Every);
     let mut heading = column![text(entry.name.clone()).size(20).font(rows::SEMIBOLD)].spacing(2);
@@ -745,7 +745,7 @@ fn app_card<'app>(
         }
         body = body.push(section("Open windows", lines.into()));
     }
-    let listed: Vec<El<'app>> = entry
+    let listed: Vec<El<'static>> = entry
         .rules
         .iter()
         .filter_map(|&at| {
@@ -811,7 +811,7 @@ fn app_card<'app>(
 
 /// The plus that opens the form for a new rule, for `app_id` if given;
 /// `what` names it on hover.
-fn add<'view>(what: String, app_id: Option<String>) -> El<'view> {
+fn add(what: String, app_id: Option<String>) -> El<'static> {
     controls::icon_button(
         crate::icons::Icon::Add,
         14.0,
@@ -829,12 +829,12 @@ fn section<'text>(heading: &'text str, content: El<'text>) -> El<'text> {
 
 /// One of the config's rules: its text, what it reaches, and what can be
 /// done with it.
-fn rule_detail<'app>(
-    state: &'app App,
+fn rule_detail(
+    state: &App,
     rule: &niri_center::store::WindowRuleRow,
     index: usize,
     windows: &[niri_center::niri::OpenWindow],
-) -> El<'app> {
+) -> El<'static> {
     let mut body = column![
         text(niri_center::rules::name(rule))
             .size(20)
@@ -868,7 +868,7 @@ fn rule_detail<'app>(
 }
 
 /// A rule's lines as written, colored.
-fn rule_text<'view>(state: &App, rule: &niri_center::store::WindowRuleRow) -> El<'view> {
+fn rule_text(state: &App, rule: &niri_center::store::WindowRuleRow) -> El<'static> {
     let lines: Vec<String> = rule
         .criteria
         .iter()
@@ -879,7 +879,7 @@ fn rule_text<'view>(state: &App, rule: &niri_center::store::WindowRuleRow) -> El
 }
 
 /// What can be done to a rule: change it, turn it off or on, remove it.
-fn rule_actions<'view>(rule: &niri_center::store::WindowRuleRow, index: usize) -> El<'view> {
+fn rule_actions(rule: &niri_center::store::WindowRuleRow, index: usize) -> El<'static> {
     row![
         // the form where it can say all of the rule, else the text
         small("Edit", AppMessage::Rules(Message::Edit(index))),

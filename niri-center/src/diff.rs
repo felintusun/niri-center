@@ -125,7 +125,7 @@ enum Side {
 
 impl Side {
     /// The item `op` stands for on this side, when it has one there.
-    fn item<'item, T>(self, op: &Op<'item, T, T>) -> Option<&'item T> {
+    fn item<T: Copy>(self, op: &Op<T, T>) -> Option<T> {
         match (self, *op) {
             (Self::Old, Op::Keep(item, _) | Op::Del(item))
             | (Self::New, Op::Keep(_, item) | Op::Ins(item)) => Some(item),
@@ -134,7 +134,7 @@ impl Side {
     }
 
     /// Whether `op` is a line only this side has.
-    const fn changed<A, B>(self, op: &Op<'_, A, B>) -> bool {
+    const fn changed<A, B>(self, op: &Op<A, B>) -> bool {
         matches!(
             (self, op),
             (Self::Old, Op::Del(_)) | (Self::New, Op::Ins(_))
@@ -165,13 +165,12 @@ fn whole<'view>(lines: impl Iterator<Item = &'view str>) -> bool {
 /// along a run of added or removed lines instead. Match it there when the
 /// runs then hold whole blocks: `+ }  + env {  + y` before a kept `}`
 /// reads as `+ env {  + y  + }` after it. The edit script stays as short.
-fn whole_blocks<'item, 'line>(ops: &mut [Op<'item, &'line str, &'line str>]) {
+fn whole_blocks<'line>(ops: &mut [Op<&'line str, &'line str>]) {
     for side in [Side::Old, Side::New] {
         // a line only the other side has reads as nothing here
-        let text = |op: &Op<'item, &'line str, &'line str>| -> &'line str {
-            side.item(op).copied().unwrap_or_default()
-        };
-        let run = |ops: &[Op<'item, &'line str, &'line str>], from: usize, to: usize| {
+        let text =
+            |op: &Op<&'line str, &'line str>| -> &'line str { side.item(op).unwrap_or_default() };
+        let run = |ops: &[Op<&'line str, &'line str>], from: usize, to: usize| {
             whole(ops.get(from..to).unwrap_or_default().iter().map(text))
         };
         for kept in 0..ops.len() {
@@ -224,7 +223,7 @@ fn whole_blocks<'item, 'line>(ops: &mut [Op<'item, &'line str, &'line str>]) {
                         .copied()
                         .collect::<Vec<_>>()
                 };
-                let region: Vec<Op<'item, &'line str, &'line str>> = if other < kept {
+                let region: Vec<Op<&'line str, &'line str>> = if other < kept {
                     let mut region = ops.get(low..other).unwrap_or_default().to_vec();
                     region.extend(between(other + 1, kept, false));
                     region.push(keep);
@@ -249,26 +248,17 @@ fn whole_blocks<'item, 'line>(ops: &mut [Op<'item, &'line str, &'line str>]) {
 }
 
 /// One step of an edit script from `a` to `b`.
-#[derive(Debug)]
-pub(crate) enum Op<'item, A, B> {
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Op<A, B> {
     /// The same item in both: as `a` has it, then as `b` has it.
-    Keep(&'item A, &'item B),
+    Keep(A, B),
     /// An item only `a` has.
-    Del(&'item A),
+    Del(A),
     /// An item only `b` has.
-    Ins(&'item B),
+    Ins(B),
 }
 
-// derived Clone and Copy would ask the same of A and B; references copy
-impl<A, B> Clone for Op<'_, A, B> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<A, B> Copy for Op<'_, A, B> {}
-
-impl<A, B> Op<'_, A, B> {
+impl<A, B> Op<A, B> {
     pub(crate) const fn is_keep(&self) -> bool {
         matches!(self, Self::Keep(..))
     }
@@ -278,15 +268,16 @@ impl<A, B> Op<'_, A, B> {
 /// (standard DP), items matched by `same`. What both start and end with is
 /// kept outright first: a change is mostly one block in a long file, and
 /// the table then covers only it.
-pub(crate) fn lcs_ops<'item, A, B>(
-    a: &'item [A],
-    b: &'item [B],
-    same: impl Fn(&A, &B) -> bool,
-) -> Vec<Op<'item, A, B>> {
+pub(crate) fn lcs_ops<A: Copy, B: Copy>(
+    a: &[A],
+    b: &[B],
+    same: impl Fn(A, B) -> bool,
+) -> Vec<Op<A, B>> {
     let prefix = a
         .iter()
-        .zip(b)
-        .take_while(|(old, new)| same(old, new))
+        .copied()
+        .zip(b.iter().copied())
+        .take_while(|&(old, new)| same(old, new))
         .count();
     let (a_rest, b_rest) = (
         a.get(prefix..).unwrap_or_default(),
@@ -295,19 +286,27 @@ pub(crate) fn lcs_ops<'item, A, B>(
     let suffix = a_rest
         .iter()
         .rev()
-        .zip(b_rest.iter().rev())
-        .take_while(|(old, new)| same(old, new))
+        .copied()
+        .zip(b_rest.iter().rev().copied())
+        .take_while(|&(old, new)| same(old, new))
         .count();
     let (a_middle, a_end) = a_rest.split_at(a_rest.len() - suffix);
     let (b_middle, b_end) = b_rest.split_at(b_rest.len() - suffix);
-    let mut ops: Vec<Op<'item, A, B>> = a
+    let mut ops: Vec<Op<A, B>> = a
         .iter()
-        .zip(b)
+        .copied()
+        .zip(b.iter().copied())
         .take(prefix)
         .map(|(old, new)| Op::Keep(old, new))
         .collect();
     ops.extend(lcs_core(a_middle, b_middle, &same));
-    ops.extend(a_end.iter().zip(b_end).map(|(old, new)| Op::Keep(old, new)));
+    ops.extend(
+        a_end
+            .iter()
+            .copied()
+            .zip(b_end.iter().copied())
+            .map(|(old, new)| Op::Keep(old, new)),
+    );
     ops
 }
 
@@ -334,19 +333,15 @@ impl Table {
     }
 }
 
-fn lcs_core<'item, A, B>(
-    a: &'item [A],
-    b: &'item [B],
-    same: impl Fn(&A, &B) -> bool,
-) -> Vec<Op<'item, A, B>> {
+fn lcs_core<A: Copy, B: Copy>(a: &[A], b: &[B], same: impl Fn(A, B) -> bool) -> Vec<Op<A, B>> {
     // filled from the ends: each cell from the ones after it
     let width = b.len() + 1;
     let mut table = Table {
         width,
         cells: vec![0; (a.len() + 1) * width],
     };
-    for (a_from, old) in a.iter().enumerate().rev() {
-        for (b_from, new) in b.iter().enumerate().rev() {
+    for (a_from, old) in a.iter().copied().enumerate().rev() {
+        for (b_from, new) in b.iter().copied().enumerate().rev() {
             let length = if same(old, new) {
                 table.at(a_from + 1, b_from + 1) + 1
             } else {
@@ -360,7 +355,7 @@ fn lcs_core<'item, A, B>(
 
     let mut ops = Vec::with_capacity(a.len() + b.len());
     let (mut a_from, mut b_from) = (0, 0);
-    while let (Some(old), Some(new)) = (a.get(a_from), b.get(b_from)) {
+    while let (Some(&old), Some(&new)) = (a.get(a_from), b.get(b_from)) {
         if same(old, new) {
             ops.push(Op::Keep(old, new));
             a_from += 1;
@@ -373,8 +368,20 @@ fn lcs_core<'item, A, B>(
             b_from += 1;
         }
     }
-    ops.extend(a.get(a_from..).unwrap_or_default().iter().map(Op::Del));
-    ops.extend(b.get(b_from..).unwrap_or_default().iter().map(Op::Ins));
+    ops.extend(
+        a.get(a_from..)
+            .unwrap_or_default()
+            .iter()
+            .copied()
+            .map(Op::Del),
+    );
+    ops.extend(
+        b.get(b_from..)
+            .unwrap_or_default()
+            .iter()
+            .copied()
+            .map(Op::Ins),
+    );
     ops
 }
 
@@ -455,7 +462,7 @@ mod tests {
             let old_lines: Vec<&str> = a.into_iter().map(|line| LINES[line]).collect();
             let new_lines: Vec<&str> = b.into_iter().map(|line| LINES[line]).collect();
             let mut ops = lcs_ops(&old_lines, &new_lines, |old, new| old == new);
-            let kept = |ops: &[Op<'_, &str, &str>]| ops.iter().filter(|op| op.is_keep()).count();
+            let kept = |ops: &[Op<&str, &str>]| ops.iter().filter(|op| op.is_keep()).count();
             let before = kept(&ops);
             whole_blocks(&mut ops);
             proptest::prop_assert_eq!(kept(&ops), before);
@@ -465,11 +472,11 @@ mod tests {
                 match *op {
                     Op::Keep(old, new) => {
                         proptest::prop_assert_eq!(old, new);
-                        old_read.push(*old);
-                        new_read.push(*new);
+                        old_read.push(old);
+                        new_read.push(new);
                     }
-                    Op::Del(old) => old_read.push(*old),
-                    Op::Ins(new) => new_read.push(*new),
+                    Op::Del(old) => old_read.push(old),
+                    Op::Ins(new) => new_read.push(new),
                 }
             }
             proptest::prop_assert_eq!(old_read, old_lines);

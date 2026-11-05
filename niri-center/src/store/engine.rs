@@ -440,7 +440,8 @@ impl Store {
         let text = |(name, value): &(String, String)| format!("{name} {value}");
         // entries kept stay as they are; between them, a changed entry is
         // written in place of an old one, the rest dropped or added there
-        let ops = lcs_ops(&children, entries, |child, (name, value)| {
+        let wanted: Vec<&(String, String)> = entries.iter().collect();
+        let ops = lcs_ops(&children, &wanted, |child, (name, value)| {
             child.name == *name
                 && child.args.first().map_or("", |first| first.kind.as_str()) == value
         });
@@ -459,7 +460,7 @@ impl Store {
             let dropped: Vec<&Node> = run
                 .iter()
                 .filter_map(|op| match op {
-                    Op::Del(child) => Some(**child),
+                    Op::Del(child) => Some(*child),
                     Op::Keep(..) | Op::Ins(_) => None,
                 })
                 .collect();

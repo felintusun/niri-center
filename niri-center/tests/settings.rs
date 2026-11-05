@@ -16,7 +16,7 @@ use std::path::Path;
 use niri_center::store::{Block, Store};
 use niri_center::validate;
 
-const LAYOUT: [Block<'static>; 1] = [Block::named("layout")];
+const LAYOUT: [Block; 1] = [Block::named("layout")];
 
 /// Write `files` (name, content) into a temp dir; load `config.kdl`.
 fn tree(files: &[(&str, &str)]) -> (tempfile::TempDir, Store) {

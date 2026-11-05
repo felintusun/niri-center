@@ -1,6 +1,7 @@
 //! Monitor drag-drop canvas: arrange connected outputs by dragging, then stage
 //! the result as `position x=… y=…` edits in the config (via the app's store).
 
+use crate::message::Message;
 use iced::widget::canvas::{self, Canvas, Program};
 use iced::widget::text::{LineHeight, Shaping};
 use iced::{Color, Length, Point, Rectangle, Renderer, Theme, mouse};
@@ -107,10 +108,7 @@ fn label(content: String, position: Point, color: Color, size: f32) -> canvas::T
     }
 }
 
-impl<Message> Program<Message, Theme, Renderer> for MonitorProgram
-where
-    Message: From<DroppedMonitor> + 'static,
-{
+impl Program<Message, Theme, Renderer> for MonitorProgram {
     type State = MonitorsState;
 
     fn update(
@@ -266,14 +264,11 @@ pub struct DroppedMonitor {
 /// The displays to arrange, `width` wide, the `selected` one outlined. Its
 /// height follows the width, not the arrangement, so it stays put while
 /// displays are dragged.
-pub fn monitor_canvas<Message>(
+pub fn monitor_canvas(
     monitors: &[(String, MonitorInfo)],
     width: f32,
     selected: Option<&str>,
-) -> Canvas<MonitorProgram, Message>
-where
-    Message: From<DroppedMonitor> + 'static,
-{
+) -> Canvas<MonitorProgram, Message> {
     let height = if monitors.len() > 1 {
         (width * 0.45).clamp(200.0, 380.0)
     } else {

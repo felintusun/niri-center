@@ -269,7 +269,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
     Task::none()
 }
 
-pub fn page<'app>(state: &'app App, store: &'app Store) -> El<'app> {
+pub fn page<'app>(state: &'app App, store: &Store) -> El<'app> {
     let rows = state.binding_rows();
     // usage counts for the keyboard picture (trailing combo key, lowercased)
     let mut counts: HashMap<String, usize> = HashMap::new();
@@ -747,7 +747,7 @@ fn compose_row(state: &App) -> El<'_> {
 }
 
 /// niri's description and argument syntax for `action`.
-fn action_help<'view>(state: &App, action: Option<&str>) -> El<'view> {
+fn action_help(state: &App, action: Option<&str>) -> El<'static> {
     let Some(info) = action.and_then(|name| {
         state
             .keybinds
@@ -785,10 +785,7 @@ fn args_placeholder(state: &App, action: Option<&str>) -> String {
 }
 
 /// The binding form's fields: the key, the action and its arguments.
-fn binding_fields<'app>(
-    state: &'app App,
-    form: &'app niri_center::forms::BindingForm,
-) -> [El<'app>; 3] {
+fn binding_fields<'app>(state: &'app App, form: &niri_center::forms::BindingForm) -> [El<'app>; 3] {
     let action = form.action.as_deref();
     [
         text_input("Mod+T", &form.key)
@@ -806,10 +803,7 @@ fn binding_fields<'app>(
     ]
 }
 
-fn new_binding_form<'app>(
-    state: &'app App,
-    form: &'app niri_center::forms::BindingForm,
-) -> El<'app> {
+fn new_binding_form<'app>(state: &'app App, form: &niri_center::forms::BindingForm) -> El<'app> {
     let action = form.action.as_deref();
     let [key, picker, args] = binding_fields(state, form);
     let add = button(text("Add binding").size(13))
@@ -836,13 +830,13 @@ fn new_binding_form<'app>(
 
 /// One binding: its key, and under it the action on a line of its own, so
 /// it never shrinks below a word. `name_file` tags it with its file.
-fn binding_row<'view>(
+fn binding_row(
     index: usize,
     binding: &niri_center::store::BindingRow,
     rows: &[niri_center::store::BindingRow],
     counts: &HashMap<String, usize>,
     name_file: bool,
-) -> El<'view> {
+) -> El<'static> {
     let key = text(binding.key.replace('+', "+\u{200b}"))
         .size(14)
         .font(theme::MONO)
@@ -854,7 +848,7 @@ fn binding_row<'view>(
     } else {
         key.style(theme::accent)
     };
-    let action: El<'view> = if binding.action.chars().count() > ACTION_PREVIEW_CHARS {
+    let action: El<'static> = if binding.action.chars().count() > ACTION_PREVIEW_CHARS {
         tooltip(
             text(niri_center::words::shortened(
                 binding.action.clone(),
@@ -893,7 +887,7 @@ fn binding_row<'view>(
     if name_file {
         details = details.push(tag(binding.file.clone()));
     }
-    let content: El<'view> = column![
+    let content: El<'static> = column![
         row![key, details].spacing(10).align_y(Alignment::Center),
         container(action).padding(iced::Padding {
             left: 12.0,
@@ -941,7 +935,7 @@ fn binding_row<'view>(
         }
         None => None,
     };
-    let content: El<'view> = match overrides {
+    let content: El<'static> = match overrides {
         Some(line) => column![content, line].spacing(2).into(),
         None => content,
     };
@@ -957,7 +951,7 @@ fn binding_row<'view>(
 /// Only the key and the action change; props on the line are kept.
 fn edit_binding_form<'app>(
     state: &'app App,
-    form: &'app niri_center::forms::BindingForm,
+    form: &niri_center::forms::BindingForm,
     index: usize,
     binding: &niri_center::store::BindingRow,
 ) -> El<'app> {

@@ -70,7 +70,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
 }
 
 /// The variables niri sets for the programs it starts.
-pub fn view<'app>(state: &'app App, store: &'app Store) -> El<'app> {
+pub fn view(state: &App, store: &Store) -> El<'static> {
     let mut rows: Vec<El<'_>> = Vec::new();
     for (name, value) in store.environment() {
         let path = settings::line_link(store, &[Block::named("environment")], &name);

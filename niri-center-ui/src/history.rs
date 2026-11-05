@@ -170,14 +170,14 @@ fn scrolls(content: El<'_>) -> El<'_> {
 }
 
 /// One version in the list: its time, its name, a muted line under it.
-fn list_item<'view>(
+fn list_item(
     time: String,
     name: String,
     under: String,
     current: bool,
     chosen: bool,
     version: Version,
-) -> El<'view> {
+) -> El<'static> {
     let mut name_line = row![text(name).size(14).width(Length::Fill)].spacing(8);
     if current {
         name_line = name_line.push(text("Current").size(12).style(theme::accent));
@@ -256,7 +256,7 @@ fn detail(state: &App, version: Version, today: Today, room: f32) -> (El<'_>, El
 }
 
 /// A version's title, the line under it, and its buttons.
-fn version_heading<'view>(title: String, under: String, buttons: El<'view>) -> El<'view> {
+fn version_heading(title: String, under: String, buttons: El<'_>) -> El<'_> {
     column![
         text(title).size(20).font(SEMIBOLD),
         text(under).size(12).style(theme::muted),
@@ -273,7 +273,7 @@ fn version_heading<'view>(title: String, under: String, buttons: El<'view>) -> E
 /// A version after a change: what the change did, and restoring it.
 fn change_detail<'app>(
     state: &'app App,
-    entry: &'app Entry,
+    entry: &Entry,
     today: Today,
     room: f32,
 ) -> (El<'app>, El<'app>) {
@@ -381,7 +381,7 @@ fn drawn_width(line: &str) -> f32 {
 /// A diff with line numbers, signs and colored KDL, for a column `room`
 /// wide. Lines longer than that scroll sideways rather than wrap, which
 /// would lose their numbers.
-pub fn diff_view<'view>(hunks: &[diff::Hunk], colors: &theme::Colors, room: f32) -> El<'view> {
+pub fn diff_view(hunks: &[diff::Hunk], colors: &theme::Colors, room: f32) -> El<'static> {
     let widest = hunks
         .iter()
         .flat_map(|hunk| &hunk.lines)

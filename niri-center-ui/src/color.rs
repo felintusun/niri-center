@@ -2,6 +2,7 @@
 //! a hue bar and an alpha bar, drawn on one canvas. Which colors niri
 //! reads, and the picker's HSV, are `niri_center::color`.
 
+use crate::message::Message;
 use iced::widget::canvas::{self, Canvas, Frame, Program, gradient};
 use iced::{Color, Length, Point, Rectangle, Renderer, Size, Theme, mouse};
 use num_traits::ToPrimitive;
@@ -90,10 +91,7 @@ impl Picker {
     }
 }
 
-impl<Message> Program<Message, Theme, Renderer> for Picker
-where
-    Message: From<Hsva> + 'static,
-{
+impl Program<Message, Theme, Renderer> for Picker {
     type State = PickerState;
 
     fn update(
@@ -272,10 +270,7 @@ fn bar_marker(frame: &mut Frame, left: f32, top: f32) {
     );
 }
 
-pub fn picker<Message>(hsva: Hsva) -> Canvas<Picker, Message>
-where
-    Message: From<Hsva> + 'static,
-{
+pub fn picker(hsva: Hsva) -> Canvas<Picker, Message> {
     Canvas::new(Picker { hsva })
         .width(Length::Fill)
         .height(Length::Fixed(HEIGHT))

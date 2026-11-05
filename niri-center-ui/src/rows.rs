@@ -48,7 +48,7 @@ pub fn sections(state: &App, page: Page) -> El<'_> {
 }
 
 /// A heading (or none) and its rows on one surface, hairlines between rows.
-pub fn group<'view>(heading: String, rows: Vec<El<'view>>) -> El<'view> {
+pub fn group(heading: String, rows: Vec<El<'_>>) -> El<'_> {
     let mut body = column![].width(Length::Fill);
     let count = rows.len();
     for (index, row) in rows.into_iter().enumerate() {
@@ -228,7 +228,7 @@ const FACTS_SIZE: f32 = 12.0;
 /// value `was`. A value written in the config has a `reset` button beside
 /// the control that takes it out again.
 fn row_frame<'app>(
-    state: &'app App,
+    state: &App,
     setting: &Spec,
     parts: RowParts<'_, 'app>,
     control: El<'app>,

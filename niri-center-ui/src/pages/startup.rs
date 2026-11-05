@@ -79,7 +79,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
     Task::none()
 }
 
-pub fn page<'app>(state: &'app App, store: &'app Store) -> El<'app> {
+pub fn page<'app>(state: &'app App, store: &Store) -> El<'app> {
     let rows = store.autostart_rows();
     let query = state.startup.search.trim().to_lowercase();
     let mut entries: Vec<El<'_>> = Vec::new();

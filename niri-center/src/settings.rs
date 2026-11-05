@@ -283,38 +283,36 @@ pub const NIRI_DEFAULT: &str = "Default";
 /// What `screenshot-path` holds when screenshots are not saved.
 pub const NO_FILE: &str = "null";
 
-const TOP: &[Block<'static>] = &[];
-const LAYOUT: &[Block<'static>] = &[Block::named("layout")];
-const STRUTS: &[Block<'static>] = &[Block::named("layout"), Block::named("struts")];
-const FOCUS_RING: &[Block<'static>] = &[Block::named("layout"), Block::named("focus-ring")];
-const BORDER: &[Block<'static>] = &[Block::named("layout"), Block::named("border")];
-const SHADOW: &[Block<'static>] = &[Block::named("layout"), Block::named("shadow")];
-const TABS: &[Block<'static>] = &[Block::named("layout"), Block::named("tab-indicator")];
-const INSERT_HINT: &[Block<'static>] = &[Block::named("layout"), Block::named("insert-hint")];
-const INPUT: &[Block<'static>] = &[Block::named("input")];
-const KEYBOARD: &[Block<'static>] = &[Block::named("input"), Block::named("keyboard")];
-const XKB: &[Block<'static>] = &[
+const TOP: &[Block] = &[];
+const LAYOUT: &[Block] = &[Block::named("layout")];
+const STRUTS: &[Block] = &[Block::named("layout"), Block::named("struts")];
+const FOCUS_RING: &[Block] = &[Block::named("layout"), Block::named("focus-ring")];
+const BORDER: &[Block] = &[Block::named("layout"), Block::named("border")];
+const SHADOW: &[Block] = &[Block::named("layout"), Block::named("shadow")];
+const TABS: &[Block] = &[Block::named("layout"), Block::named("tab-indicator")];
+const INSERT_HINT: &[Block] = &[Block::named("layout"), Block::named("insert-hint")];
+const INPUT: &[Block] = &[Block::named("input")];
+const KEYBOARD: &[Block] = &[Block::named("input"), Block::named("keyboard")];
+const XKB: &[Block] = &[
     Block::named("input"),
     Block::named("keyboard"),
     Block::named("xkb"),
 ];
-const TOUCHPAD: &[Block<'static>] = &[Block::named("input"), Block::named("touchpad")];
-const MOUSE: &[Block<'static>] = &[Block::named("input"), Block::named("mouse")];
-const TABLET: &[Block<'static>] = &[Block::named("input"), Block::named("tablet")];
-const TOUCH: &[Block<'static>] = &[Block::named("input"), Block::named("touch")];
-const CURSOR: &[Block<'static>] = &[Block::named("cursor")];
-const ANIMATIONS: &[Block<'static>] = &[Block::named("animations")];
-const HOT_CORNERS: &[Block<'static>] = &[Block::named("gestures"), Block::named("hot-corners")];
-const OVERVIEW: &[Block<'static>] = &[Block::named("overview")];
-const WORKSPACE_SHADOW: &[Block<'static>] =
-    &[Block::named("overview"), Block::named("workspace-shadow")];
-const RECENT: &[Block<'static>] = &[Block::named("recent-windows")];
-const RECENT_HIGHLIGHT: &[Block<'static>] =
-    &[Block::named("recent-windows"), Block::named("highlight")];
-const BLUR: &[Block<'static>] = &[Block::named("blur")];
-const HOTKEY_OVERLAY: &[Block<'static>] = &[Block::named("hotkey-overlay")];
-const CLIPBOARD: &[Block<'static>] = &[Block::named("clipboard")];
-const XWAYLAND: &[Block<'static>] = &[Block::named("xwayland-satellite")];
+const TOUCHPAD: &[Block] = &[Block::named("input"), Block::named("touchpad")];
+const MOUSE: &[Block] = &[Block::named("input"), Block::named("mouse")];
+const TABLET: &[Block] = &[Block::named("input"), Block::named("tablet")];
+const TOUCH: &[Block] = &[Block::named("input"), Block::named("touch")];
+const CURSOR: &[Block] = &[Block::named("cursor")];
+const ANIMATIONS: &[Block] = &[Block::named("animations")];
+const HOT_CORNERS: &[Block] = &[Block::named("gestures"), Block::named("hot-corners")];
+const OVERVIEW: &[Block] = &[Block::named("overview")];
+const WORKSPACE_SHADOW: &[Block] = &[Block::named("overview"), Block::named("workspace-shadow")];
+const RECENT: &[Block] = &[Block::named("recent-windows")];
+const RECENT_HIGHLIGHT: &[Block] = &[Block::named("recent-windows"), Block::named("highlight")];
+const BLUR: &[Block] = &[Block::named("blur")];
+const HOTKEY_OVERLAY: &[Block] = &[Block::named("hotkey-overlay")];
+const CLIPBOARD: &[Block] = &[Block::named("clipboard")];
+const XWAYLAND: &[Block] = &[Block::named("xwayland-satellite")];
 
 const ACCEL_PROFILES: &[(Words, Words)] = &[
     (Words("adaptive"), Words("Adaptive")),

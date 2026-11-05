@@ -404,17 +404,17 @@ impl Program<Message, Theme, Renderer> for Drawing {
 }
 
 /// `icon` drawn `size` pixels square in the muted text color.
-pub fn icon<'view>(icon: Icon, size: f32) -> El<'view> {
+pub fn icon(icon: Icon, size: f32) -> El<'static> {
     tinted(icon, size, Tint::Muted)
 }
 
 /// `icon` in the text color: a sidebar entry's.
-pub fn strong<'view>(icon: Icon, size: f32) -> El<'view> {
+pub fn strong(icon: Icon, size: f32) -> El<'static> {
     tinted(icon, size, Tint::Text)
 }
 
 /// `icon` in one of the theme's colors.
-pub fn tinted<'view>(icon: Icon, size: f32, tint: Tint) -> El<'view> {
+pub fn tinted(icon: Icon, size: f32, tint: Tint) -> El<'static> {
     Canvas::new(Drawing { icon, tint })
         .width(size)
         .height(size)

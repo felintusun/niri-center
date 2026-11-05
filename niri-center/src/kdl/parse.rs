@@ -52,7 +52,7 @@ struct Parser<'view> {
     next_id: usize,
 }
 
-impl<'view> Parser<'view> {
+impl Parser<'_> {
     fn peek(&self) -> Option<u8> {
         self.src.as_bytes().get(self.pos).copied()
     }

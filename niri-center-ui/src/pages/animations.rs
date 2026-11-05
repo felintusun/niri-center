@@ -81,7 +81,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
     Task::none()
 }
 
-pub fn page<'app>(state: &'app App, store: &'app Store) -> El<'app> {
+pub fn page<'app>(state: &'app App, store: &Store) -> El<'app> {
     let col = column![rows::sections(state, Page::Animations)].spacing(24);
     let animation = state.animation.animation;
     let name = animation.name();

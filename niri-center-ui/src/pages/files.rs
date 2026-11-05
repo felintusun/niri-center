@@ -85,7 +85,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
     Task::none()
 }
 
-pub fn page<'app>(state: &'app App, store: &'app Store) -> El<'app> {
+pub fn page<'app>(state: &'app App, store: &Store) -> El<'app> {
     let mut file_rows = vec![pad(row![
         text(niri_center::store::tilde(store.path()))
             .size(13)

@@ -40,13 +40,6 @@ pub struct Value {
     pub span: Span,
 }
 
-impl Value {
-    /// Exact raw bytes from the file, including quotes for strings.
-    pub fn raw<'doc>(&self, doc: &'doc Document) -> &'doc str {
-        &doc.source[self.span.start..self.span.end]
-    }
-}
-
 /// A property `name = value` inside a node head.
 #[derive(Debug, Clone)]
 pub struct Prop {
@@ -74,19 +67,12 @@ pub struct Node {
     pub disabled: bool,
 }
 
-impl Node {
-    /// The node exactly as written, from its name to its last token.
-    pub fn raw<'doc>(&self, doc: &'doc Document) -> &'doc str {
-        &doc.source[self.node_span.start..self.node_span.end]
-    }
-}
-
 /// The nodes in `nodes` named `name` that niri actually reads: `/-`-disabled
 /// nodes are skipped, and with them everything nested inside.
-pub fn active_named<'nodes, 'name>(
+pub fn active_named<'nodes>(
     nodes: &'nodes [Node],
-    name: &'name str,
-) -> impl Iterator<Item = &'nodes Node> + use<'nodes, 'name> {
+    name: &str,
+) -> impl Iterator<Item = &'nodes Node> {
     nodes
         .iter()
         .filter(move |node| node.name == name && !node.disabled)
@@ -152,19 +138,20 @@ impl Document {
             .partition_point(|&start| start <= offset.min(self.source.len()))
     }
 
+    /// The text at `span` exactly as written: a value with its quotes, a
+    /// node from its name to its last token.
+    pub fn raw(&self, span: Span) -> &str {
+        &self.source[span.start..span.end]
+    }
+
     /// All nodes in document order (DFS).
     pub fn iter_all(&self) -> impl Iterator<Item = &Node> {
-        fn walk<'node>(node: &'node Node, out: &mut Vec<&'node Node>) {
-            out.push(node);
-            for child in &node.children {
-                walk(child, out);
-            }
-        }
-        let mut out = Vec::new();
-        for root in &self.roots {
-            walk(root, &mut out);
-        }
-        out.into_iter()
+        let mut pending: Vec<&Node> = self.roots.iter().rev().collect();
+        std::iter::from_fn(move || {
+            let node = pending.pop()?;
+            pending.extend(node.children.iter().rev());
+            Some(node)
+        })
     }
 
     /// All nodes (any depth) with the given name, in document order.

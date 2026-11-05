@@ -22,7 +22,7 @@ const fn color(colors: &theme::Colors, token: Token) -> Color {
 }
 
 /// Lines of KDL, colored, in a code block.
-pub fn block<'view>(source: &str, colors: &theme::Colors, size: f32) -> El<'view> {
+pub fn block(source: &str, colors: &theme::Colors, size: f32) -> El<'static> {
     let mut lines = iced::widget::column![];
     for text in source.lines() {
         lines = lines.push(line(text, colors, size));
@@ -36,8 +36,8 @@ pub fn block<'view>(source: &str, colors: &theme::Colors, size: f32) -> El<'view
 }
 
 /// One line of KDL, colored, in the monospace face.
-pub fn line<'view>(source: &str, colors: &theme::Colors, size: f32) -> El<'view> {
-    let spans: Vec<Span<'view, (), iced::Font>> = tokens(source)
+pub fn line(source: &str, colors: &theme::Colors, size: f32) -> El<'static> {
+    let spans: Vec<Span<'static, (), iced::Font>> = tokens(source)
         .into_iter()
         .map(|(range, token)| {
             let piece = span(source[range].to_string()).color(color(colors, token));
@@ -70,13 +70,13 @@ pub enum Mark {
 
 /// Lines `first` to `last` (1-based) of `source`, numbered and colored,
 /// with the lines in `changed` marked as not saved yet.
-pub fn numbered_lines<'view>(
+pub fn numbered_lines(
     source: &str,
     first: usize,
     last: usize,
     changed: &[usize],
     colors: &theme::Colors,
-) -> Column<'view, Message> {
+) -> Column<'static, Message> {
     let mut lines = column![].width(Length::Fill);
     for (index, line) in source
         .lines()
@@ -97,7 +97,7 @@ pub fn numbered_lines<'view>(
 
 /// Numbered lines on a surface of their own. Long lines run past the
 /// edge: wrapped, KDL would lose its line numbers.
-pub fn lines_block<'view>(lines: Column<'view, Message>) -> El<'view> {
+pub fn lines_block(lines: Column<'_, Message>) -> El<'_> {
     container(lines)
         .padding([8, 0])
         .clip(true)
@@ -116,13 +116,13 @@ pub enum Gutter {
 
 /// One line of KDL behind its number, the way the source column, the
 /// repair panel and History show code.
-pub fn numbered<'view>(
+pub fn numbered(
     number: usize,
     source: &str,
     mark: Mark,
     gutter: Gutter,
     colors: &theme::Colors,
-) -> El<'view> {
+) -> El<'static> {
     let number_style = match (mark, gutter) {
         (Mark::Changed, _) => theme::pending,
         (Mark::Added, Gutter::Number) => theme::success,

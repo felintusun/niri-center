@@ -171,7 +171,7 @@ impl Disk {
             store.keep_spare(spare, text);
         }
         let read_only = match &self.backend {
-            Backend::Files(_) => read_only(store.saved_texts().map(|(path, _)| path)),
+            Backend::Files(_) => read_only(&store),
             Backend::Memory(_) => Vec::new(),
         };
         Ok(Loaded { store, read_only })
@@ -253,16 +253,14 @@ impl Disk {
 
     /// The files whose text on disk is no longer what `saved` says: another
     /// program wrote them. `before` is the saved text, `after` the disk's.
-    pub fn changed<'view>(
-        &self,
-        saved: impl Iterator<Item = (&'view Path, &'view str)>,
-    ) -> Vec<FileChange> {
+    pub fn changed(&self, saved: &[(PathBuf, String)]) -> Vec<FileChange> {
         saved
+            .iter()
             .filter_map(|(path, text)| {
                 let on_disk = self.read(path).ok()?;
-                (on_disk != text).then(|| FileChange {
-                    path: path.to_path_buf(),
-                    before: text.to_string(),
+                (on_disk != *text).then(|| FileChange {
+                    path: path.clone(),
+                    before: text.clone(),
                     after: on_disk,
                 })
             })
@@ -417,12 +415,14 @@ pub fn config_dirs(main: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-/// The files of `paths` this app cannot write: a read-only file or folder,
+/// The files of `store` this app cannot write: a read-only file or folder,
 /// a link into a read-only store (NixOS, home-manager), or a folder outside
 /// the sandbox's reach. Found by trying, as a save would, to create a file
 /// beside each; nothing is left behind.
-fn read_only<'view>(paths: impl Iterator<Item = &'view Path>) -> Vec<PathBuf> {
-    paths
+fn read_only(store: &Store) -> Vec<PathBuf> {
+    store
+        .saved_texts()
+        .map(|(path, _)| path)
         .filter(|path| {
             let resolved = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
             let writable = fs::OpenOptions::new().append(true).open(&resolved).is_ok()

@@ -462,11 +462,7 @@ impl Actor {
         main: &Path,
         saved: &[(PathBuf, String)],
     ) -> Option<((Loaded, Entry), Option<String>)> {
-        let changed = self.disk.changed(
-            saved
-                .iter()
-                .map(|(path, text)| (path.as_path(), text.as_str())),
-        );
+        let changed = self.disk.changed(saved);
         if changed.is_empty() {
             return None;
         }
