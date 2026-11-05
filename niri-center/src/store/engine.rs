@@ -61,6 +61,13 @@ impl std::fmt::Display for Override {
     }
 }
 
+/// One column or window size as written: `proportion 0.5`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SizeEntry {
+    pub name: String,
+    pub value: String,
+}
+
 /// Sections a later block replaces whole instead of merging into.
 const REPLACED_WHOLE: [&str; 3] = ["preset-column-widths", "preset-window-heights", "struts"];
 
@@ -379,10 +386,10 @@ impl Store {
         found
     }
 
-    /// The `(name, value)` children of the `block` niri applies inside
-    /// `chain`, such as `preset-column-widths` → `[("proportion", "0.5")]`.
-    /// `None` when the config leaves the block unset.
-    pub fn sizes(&self, chain: &[Block], block: &str) -> Option<Vec<(String, String)>> {
+    /// The children of the `block` niri applies inside `chain`, such as
+    /// `proportion 0.5` in `preset-column-widths`. `None` when the config
+    /// leaves the block unset.
+    pub fn sizes(&self, chain: &[Block], block: &str) -> Option<Vec<SizeEntry>> {
         let node = self.setting_node(chain, block)?;
         Some(
             node.children
@@ -394,29 +401,32 @@ impl Store {
                         .first()
                         .map(|value| value.kind.as_str().to_string())
                         .unwrap_or_default();
-                    (child.name.clone(), value)
+                    SizeEntry {
+                        name: child.name.clone(),
+                        value,
+                    }
                 })
                 .collect(),
         )
     }
 
-    /// Make the `block` niri applies hold these `(name, value)` children;
-    /// `None` removes it so niri's default applies. Only the entries that
-    /// change are touched: a changed one is replaced where it stands, new
-    /// ones go after the last, dropped ones go, and comments and `/-`
-    /// lines in the block stay. A block on one line stays on one line.
+    /// Make the `block` niri applies hold these children; `None` removes it
+    /// so niri's default applies. Only the entries that change are touched:
+    /// a changed one is replaced where it stands, new ones go after the
+    /// last, dropped ones go, and comments and `/-` lines in the block stay.
+    /// A block on one line stays on one line.
     pub fn set_sizes(
         &mut self,
         chain: &[Block],
         block: &str,
-        entries: Option<&[(String, String)]>,
+        entries: Option<&[SizeEntry]>,
     ) -> Result<(), StoreError> {
         let Some(entries) = entries else {
             return self.unset_setting(chain, block);
         };
         let body: String = entries
             .iter()
-            .map(|(name, value)| format!(" {name} {value};"))
+            .map(|entry| format!(" {} {};", entry.name, entry.value))
             .collect();
         // a new block, or one written without braces: nothing inside to keep
         let braced = format!("{{{body} }}");
@@ -437,13 +447,13 @@ impl Store {
             .iter()
             .filter(|child| !child.disabled)
             .collect();
-        let text = |(name, value): &(String, String)| format!("{name} {value}");
+        let text = |entry: &SizeEntry| format!("{} {}", entry.name, entry.value);
         // entries kept stay as they are; between them, a changed entry is
         // written in place of an old one, the rest dropped or added there
-        let wanted: Vec<&(String, String)> = entries.iter().collect();
-        let ops = lcs_ops(&children, &wanted, |child, (name, value)| {
-            child.name == *name
-                && child.args.first().map_or("", |first| first.kind.as_str()) == value
+        let wanted: Vec<&SizeEntry> = entries.iter().collect();
+        let ops = lcs_ops(&children, &wanted, |child, entry| {
+            child.name == entry.name
+                && child.args.first().map_or("", |first| first.kind.as_str()) == entry.value
         });
         let mut edits: Vec<(Span, String)> = Vec::new();
         let mut last_old: Option<&Node> = None;
@@ -464,7 +474,7 @@ impl Store {
                     Op::Keep(..) | Op::Ins(_) => None,
                 })
                 .collect();
-            let added: Vec<&(String, String)> = run
+            let added: Vec<&SizeEntry> = run
                 .iter()
                 .filter_map(|op| match op {
                     Op::Ins(entry) => Some(*entry),

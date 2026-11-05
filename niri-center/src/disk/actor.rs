@@ -14,6 +14,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use super::{Disk, DiskError, Loaded, SaveJob};
 use crate::history::{self, Entry, FileChange, Source};
 use crate::session::SaveWhen;
+use crate::snapshot::SnapshotFile;
 use crate::store::Store;
 use crate::summary::describe;
 
@@ -57,7 +58,7 @@ pub enum Command {
     },
     CreateSnapshot {
         name: String,
-        files: Vec<(String, String)>,
+        files: Vec<SnapshotFile>,
     },
     Snapshot {
         name: String,
@@ -135,7 +136,7 @@ pub enum Reply {
     },
     Snapshot {
         name: String,
-        files: Result<Vec<(String, String)>, String>,
+        files: Result<Vec<SnapshotFile>, String>,
     },
     /// A snapshot could not be made or deleted, or a preference kept.
     Failed(String),

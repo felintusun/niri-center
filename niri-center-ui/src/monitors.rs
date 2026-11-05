@@ -5,7 +5,7 @@ use crate::message::Message;
 use iced::widget::canvas::{self, Canvas, Program};
 use iced::widget::text::{LineHeight, Shaping};
 use iced::{Color, Length, Point, Rectangle, Renderer, Theme, mouse};
-use niri_center::outputs::MonitorInfo;
+use niri_center::outputs::{MonitorInfo, PlacedDisplay};
 use num_traits::ToPrimitive;
 
 /// Canvas program state persisted by iced between events.
@@ -40,13 +40,13 @@ struct Layout {
 
 impl Layout {
     /// Fit logical bounding box into `bounds` with padding, centered.
-    fn new(monitors: &[(String, MonitorInfo)], bounds: Rectangle) -> Option<Self> {
+    fn new(monitors: &[PlacedDisplay], bounds: Rectangle) -> Option<Self> {
         if monitors.is_empty() || bounds.width < 1.0 || bounds.height < 1.0 {
             return None;
         }
         let (mut min_x, mut min_y) = (f32::INFINITY, f32::INFINITY);
         let (mut max_x, mut max_y) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
-        for monitor in monitors.iter().filter_map(|(_, monitor)| drawn(monitor)) {
+        for monitor in monitors.iter().filter_map(|display| drawn(&display.rect)) {
             min_x = min_x.min(monitor.x);
             min_y = min_y.min(monitor.y);
             max_x = max_x.max(monitor.x + monitor.width);
@@ -87,8 +87,8 @@ impl Layout {
 
 /// A canvas rendering the monitor arrangement with drag interaction.
 pub struct MonitorProgram {
-    /// `(name, logical geometry)` in IPC order.
-    pub monitors: Vec<(String, MonitorInfo)>,
+    /// In IPC order.
+    pub monitors: Vec<PlacedDisplay>,
     /// The display whose settings the page shows, outlined in the accent.
     pub selected: Option<String>,
 }
@@ -125,8 +125,8 @@ impl Program<Message, Theme, Renderer> for MonitorProgram {
         match event {
             canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 let pos = cursor_local?;
-                for (place, (_, monitor)) in self.monitors.iter().enumerate() {
-                    let Some(logical) = drawn(monitor) else {
+                for (place, display) in self.monitors.iter().enumerate() {
+                    let Some(logical) = drawn(&display.rect) else {
                         continue;
                     };
                     let rect = layout.logical_to_canvas(logical);
@@ -153,10 +153,10 @@ impl Program<Message, Theme, Renderer> for MonitorProgram {
                         pos.x - drag.offset.x,
                         pos.y - drag.offset.y,
                     ));
-                    let (name, _) = self.monitors.get(drag.index)?;
+                    let display = self.monitors.get(drag.index)?;
                     return Some(
                         canvas::Action::publish(Message::from(DroppedMonitor {
-                            name: name.clone(),
+                            name: display.name.clone(),
                             x: logical.x,
                             y: logical.y,
                         }))
@@ -191,8 +191,8 @@ impl Program<Message, Theme, Renderer> for MonitorProgram {
             return vec![frame.into_geometry()];
         };
 
-        for (place, (name, monitor)) in self.monitors.iter().enumerate() {
-            let Some(logical) = drawn(monitor) else {
+        for (place, display) in self.monitors.iter().enumerate() {
+            let Some(logical) = drawn(&display.rect) else {
                 continue;
             };
             let drag = state.drag.as_ref().filter(|dragged| dragged.index == place);
@@ -205,7 +205,7 @@ impl Program<Message, Theme, Renderer> for MonitorProgram {
                     height: logical.height * layout.scale,
                 },
             );
-            let selected = self.selected.as_ref() == Some(name);
+            let selected = self.selected.as_ref() == Some(&display.name);
             let (fill, edge, edge_width) = match (drag.is_some(), selected) {
                 (true, _) => (
                     crate::theme::mix(colors.surface, colors.accent, 0.35),
@@ -223,11 +223,16 @@ impl Program<Message, Theme, Renderer> for MonitorProgram {
                     .with_width(edge_width)
                     .with_color(edge),
             );
-            frame.fill_text(label(name.clone(), rect.center(), colors.text, 14.0));
+            frame.fill_text(label(
+                display.name.clone(),
+                rect.center(),
+                colors.text,
+                14.0,
+            ));
             frame.fill_text(label(
                 format!(
                     "{:.0} × {:.0} at {:.0}, {:.0}",
-                    monitor.width, monitor.height, monitor.x, monitor.y
+                    display.rect.width, display.rect.height, display.rect.x, display.rect.y
                 ),
                 Point::new(rect.center().x, rect.center().y + 20.0),
                 colors.muted,
@@ -265,7 +270,7 @@ pub struct DroppedMonitor {
 /// height follows the width, not the arrangement, so it stays put while
 /// displays are dragged.
 pub fn monitor_canvas(
-    monitors: &[(String, MonitorInfo)],
+    monitors: &[PlacedDisplay],
     width: f32,
     selected: Option<&str>,
 ) -> Canvas<MonitorProgram, Message> {

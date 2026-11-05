@@ -3817,3 +3817,217 @@ fn the_config_file_page_shows_every_included_file_and_folds_them() {
     apply(&mut app, messages);
     assert_eq!(count_shown(&app, TALL, "2"), 3);
 }
+
+#[test]
+fn a_dropped_display_moves_on_the_arrangement_and_no_other_does() {
+    let (_dir, mut app) = loaded_app(UI_FIXTURE);
+    goto(&mut app, Page::Displays);
+    let names: Vec<&str> = app
+        .displays
+        .monitors
+        .iter()
+        .map(|display| display.name.as_str())
+        .collect();
+    assert_eq!(names, ["DP-1", "eDP-1"]);
+    apply(
+        &mut app,
+        [Message::Displays(displays::Message::Dropped(
+            crate::monitors::DroppedMonitor {
+                name: "DP-1".into(),
+                x: -2500.0,
+                y: 30.0,
+            },
+        ))],
+    );
+    let lefts: Vec<f64> = app
+        .displays
+        .monitors
+        .iter()
+        .map(|display| display.rect.x)
+        .collect();
+    assert_eq!(lefts, [-2560.0, 0.0]);
+}
+
+#[test]
+fn each_display_in_the_list_says_its_own_size() {
+    let (_dir, mut app) = loaded_app(UI_FIXTURE);
+    goto(&mut app, Page::Displays);
+    assert!(shows(&app, TALL, "DP-1, 2560 × 1440 after scaling"));
+    assert!(shows(&app, TALL, "eDP-1, 1707 × 1067 after scaling"));
+}
+
+#[test]
+fn the_position_row_shows_where_the_selected_display_is() {
+    let (_dir, mut app) = loaded_app(UI_FIXTURE);
+    goto(&mut app, Page::Displays);
+    assert!(shows(&app, TALL, "1707"));
+    apply(
+        &mut app,
+        [Message::Displays(displays::Message::Pick("eDP-1".into()))],
+    );
+    assert!(!shows(&app, TALL, "1707"));
+}
+
+/// How tall a pick list is, and each option it opens: a line of the app's
+/// 14 px text and iced's 5 px of padding above and below it.
+const PICK_HEIGHT: f32 = 14.0 * 1.3 + 10.0;
+
+/// What choosing an option sends. A pick list shows no text a test can find,
+/// so it goes by places: `list` is the middle of the closed list, and `place`
+/// counts down the options it opens, niri's default being 0.
+fn pick(mut ui: Simulator<'_, Message>, list: iced::Point, place: usize) -> Vec<Message> {
+    ui.point_at(list);
+    ui.simulate(iced_test::simulator::click());
+    let option = iced::Point::new(list.x, list.y + PICK_HEIGHT * (place as f32 + 1.0));
+    ui.point_at(option);
+    ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+        position: option,
+    })]);
+    ui.simulate(iced_test::simulator::click());
+    ui.into_messages().collect()
+}
+
+/// The value `messages` choose: one choice, or the test fails.
+fn chosen(messages: &[Message]) -> Option<String> {
+    let [Message::Setting(_, Edit::Choice(value)) | Message::Output(_, _, Edit::Choice(value))] =
+        messages
+    else {
+        panic!("not one choice: {messages:?}");
+    };
+    value.clone()
+}
+
+/// A setting's control alone in a window, its list at the top.
+fn control_alone<'app>(
+    app: &'app App,
+    setting: Setting,
+    current: Option<&str>,
+) -> Simulator<'app, Message> {
+    let spec = setting.spec();
+    Simulator::with_size(
+        crate::settings(),
+        TALL,
+        crate::controls::control(
+            app,
+            &DraftKey::Setting(setting),
+            spec.kind,
+            spec.default.as_str(),
+            niri_center::settings::Reading::Value(current.map(str::to_string)),
+            move |edit| Message::Setting(setting, edit),
+        ),
+    )
+}
+
+#[test]
+fn choosing_an_option_writes_its_value_not_its_label() {
+    let (_dir, app) = loaded_app(UI_FIXTURE);
+    let top_of_window = iced::Point::new(100.0, PICK_HEIGHT / 2.0);
+    let choose = |setting: Setting, current: Option<&str>, place: usize| {
+        chosen(&pick(
+            control_alone(&app, setting, current),
+            top_of_window,
+            place,
+        ))
+    };
+    // "Stacked", then "As tabs"
+    assert_eq!(
+        choose(Setting::LayoutDefaultColumnDisplay, None, 2).as_deref(),
+        Some("tabbed")
+    );
+    // "On", then "Off"
+    assert_eq!(
+        choose(Setting::LayoutShadowDrawBehindWindow, None, 1).as_deref(),
+        Some("true")
+    );
+    // "DP-1 (Dell Inc. U2720Q)"
+    assert_eq!(
+        choose(Setting::InputTabletMapToOutput, None, 1).as_deref(),
+        Some("DP-1")
+    );
+    // "The app decides", then "1/3"
+    assert_eq!(
+        choose(Setting::LayoutDefaultColumnWidth, None, 1).as_deref(),
+        Some("")
+    );
+    assert_eq!(
+        choose(Setting::LayoutDefaultColumnWidth, None, 2).as_deref(),
+        Some("proportion 0.33333")
+    );
+    // a value no preset has comes last, reading "800 px"
+    assert_eq!(
+        choose(Setting::LayoutDefaultColumnWidth, Some("fixed 800"), 5).as_deref(),
+        Some("fixed 800")
+    );
+}
+
+#[test]
+fn choosing_a_display_mode_or_scale_writes_its_value_not_its_label() {
+    let (_dir, mut app) = loaded_app(UI_FIXTURE);
+    goto(&mut app, Page::Displays);
+    // a row's control is centred on the words beside it, first to last line
+    let list_in = |first_line: &str, last_line: &str| {
+        let mut ui = ui(&app, TALL);
+        let control_left = ui.find("1707").unwrap().bounds().x;
+        let top = ui.find(first_line).unwrap().bounds().y;
+        let last = ui.find(last_line).unwrap().bounds();
+        iced::Point::new(control_left + 20.0, (top + last.y + last.height) / 2.0)
+    };
+    let mode = list_in("Resolution and refresh rate", "Resolution and refresh rate");
+    assert_eq!(
+        chosen(&pick(ui(&app, TALL), mode, 1)).as_deref(),
+        Some("3840x2160@59.997")
+    );
+    let scale = list_in("Scale", "The desktop on it is 2560 × 1440 logical pixels.");
+    assert_eq!(
+        chosen(&pick(ui(&app, TALL), scale, 3)).as_deref(),
+        Some("1.5")
+    );
+}
+
+/// The text `messages` draft: one draft, or the test fails.
+fn drafted(messages: &[Message]) -> &str {
+    let [Message::Setting(_, Edit::Draft(text))] = messages else {
+        panic!("not one draft: {messages:?}");
+    };
+    text
+}
+
+#[test]
+fn a_size_typed_in_the_list_changes_that_entry_value() {
+    let (_dir, app) = loaded_app(UI_FIXTURE);
+    let mut ui = control_alone(&app, Setting::LayoutPresetColumnWidths, None);
+    ui.click("0.5").unwrap();
+    ui.typewrite("5");
+    let messages: Vec<Message> = ui.into_messages().collect();
+    assert_eq!(
+        drafted(&messages),
+        "proportion 0.33333; proportion 0.55; proportion 0.66667"
+    );
+}
+
+#[test]
+fn switching_a_size_to_fixed_pixels_converts_it_against_the_screen() {
+    let (_dir, app) = loaded_app(UI_FIXTURE);
+    let mut ui = control_alone(&app, Setting::LayoutPresetColumnWidths, None);
+    let field = ui.find("0.5").unwrap().bounds();
+    // the kind's list sits left of the value, in the same row
+    let list = iced::Point::new(field.x - 100.0, field.center_y());
+    // "Part of the screen", then "Fixed pixels": this list has no default
+    let messages = pick(ui, list, 1);
+    assert_eq!(
+        drafted(&messages),
+        "proportion 0.33333; fixed 1280; proportion 0.66667"
+    );
+}
+
+#[test]
+fn adding_a_fixed_size_writes_half_the_screen_in_pixels() {
+    let (_dir, app) = loaded_app(UI_FIXTURE);
+    let mut ui = control_alone(&app, Setting::LayoutPresetColumnWidths, None);
+    ui.click("Fixed size").unwrap();
+    let messages: Vec<Message> = ui.into_messages().collect();
+    assert_eq!(
+        drafted(&messages),
+        "proportion 0.33333; proportion 0.5; proportion 0.66667; fixed 1280"
+    );
+}

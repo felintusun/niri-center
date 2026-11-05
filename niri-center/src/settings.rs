@@ -15,7 +15,7 @@ use crate::color::{Gradient, is_color};
 use crate::kdl::{ValueKind, quoted};
 use crate::outputs::OutputInfo;
 use crate::page::Page;
-use crate::store::{Block, Store, StoreError};
+use crate::store::{Block, SizeEntry, Store, StoreError};
 use crate::system::SystemData;
 use crate::words::{Words, who};
 
@@ -1864,22 +1864,25 @@ pub fn write(
     }
 }
 
-/// `proportion 0.5; fixed 800` as `(name, value)` pairs.
-pub fn sizes(text: &str) -> Vec<(String, String)> {
+/// `proportion 0.5; fixed 800` as entries.
+pub fn sizes(text: &str) -> Vec<SizeEntry> {
     text.split(';')
         .map(str::trim)
         .filter(|entry| !entry.is_empty())
         .map(|entry| {
             let (name, value) = entry.split_once(' ').unwrap_or((entry, ""));
-            (name.trim().to_string(), value.trim().to_string())
+            SizeEntry {
+                name: name.trim().to_string(),
+                value: value.trim().to_string(),
+            }
         })
         .collect()
 }
 
-pub fn join_sizes(entries: &[(String, String)]) -> String {
+pub fn join_sizes(entries: &[SizeEntry]) -> String {
     entries
         .iter()
-        .map(|(name, value)| format!("{name} {value}"))
+        .map(|entry| format!("{} {}", entry.name, entry.value))
         .collect::<Vec<_>>()
         .join("; ")
 }
@@ -1970,7 +1973,7 @@ fn parse_sizes(input: &str, many: bool) -> Result<String, String> {
     if many && entries.is_empty() {
         return Err("Keep at least one size.".to_string());
     }
-    for (name, value) in &entries {
+    for SizeEntry { name, value } in &entries {
         let ok = match name.as_str() {
             "proportion" => value.parse::<f64>().is_ok_and(|proportion| {
                 proportion.is_finite() && proportion > 0.0 && proportion <= 1.0
@@ -1986,13 +1989,16 @@ fn parse_sizes(input: &str, many: bool) -> Result<String, String> {
         }
     }
     // niri reads a proportion as a float only: `1.0`, never `1`
-    let entries: Vec<(String, String)> = entries
+    let entries: Vec<SizeEntry> = entries
         .into_iter()
-        .map(|(name, value)| {
+        .map(|SizeEntry { name, value }| {
             if name == "proportion" && !value.contains('.') {
-                (name, format!("{value}.0"))
+                SizeEntry {
+                    name,
+                    value: format!("{value}.0"),
+                }
             } else {
-                (name, value)
+                SizeEntry { name, value }
             }
         })
         .collect();

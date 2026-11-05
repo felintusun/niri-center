@@ -19,6 +19,7 @@ use niri_center::settings::{
     Axis, Edit, Kind, NIRI_DEFAULT, NO_FILE, OnOff, Reading, join_sizes, size_label, sizes,
 };
 use niri_center::settings::{default_label, default_placeholder};
+use niri_center::store::SizeEntry;
 use niri_center::words::{
     comma_list, expand_strftime, join_path, short_fraction, short_number, split_path,
 };
@@ -83,6 +84,13 @@ impl<T> std::fmt::Display for Labeled<T> {
     }
 }
 
+/// One option of a [`choice_list`]: what gets written and what the user reads.
+#[derive(Debug, Clone)]
+pub struct ChoiceOption {
+    pub value: String,
+    pub label: String,
+}
+
 /// Whether the control for `kind` goes under its label rather than beside it.
 pub fn is_wide(state: &App, key: &DraftKey, kind: Kind) -> bool {
     matches!(
@@ -132,9 +140,12 @@ pub fn control<'app>(
         }
         (Kind::OnOff, Reading::OnOff(current)) => on_off_list(current, default, make),
         (Kind::Choice(options), Reading::Value(current)) => {
-            let labeled: Vec<(String, String)> = options
+            let labeled: Vec<ChoiceOption> = options
                 .iter()
-                .map(|(value, label)| ((*value).to_string(), (*label).to_string()))
+                .map(|(value, label)| ChoiceOption {
+                    value: (*value).to_string(),
+                    label: (*label).to_string(),
+                })
                 .collect();
             let shown_default = kind.word(default).unwrap_or(default);
             choice_list(
@@ -146,8 +157,14 @@ pub fn control<'app>(
         }
         (Kind::Bool, Reading::Value(current)) => choice_list(
             vec![
-                ("true".to_string(), "On".to_string()),
-                ("false".to_string(), "Off".to_string()),
+                ChoiceOption {
+                    value: "true".to_string(),
+                    label: "On".to_string(),
+                },
+                ChoiceOption {
+                    value: "false".to_string(),
+                    label: "Off".to_string(),
+                },
             ],
             current.as_deref(),
             &default_label(kind.word(default).unwrap_or(default)),
@@ -183,7 +200,10 @@ pub fn control<'app>(
                 .system
                 .cursor_themes
                 .iter()
-                .map(|theme_name| (theme_name.clone(), theme_name.clone()))
+                .map(|theme_name| ChoiceOption {
+                    value: theme_name.clone(),
+                    label: theme_name.clone(),
+                })
                 .collect();
             choice_list(themes, current.as_deref(), &default_label(default), make)
         }
@@ -197,7 +217,10 @@ pub fn control<'app>(
                     } else {
                         format!("{} ({})", output.name, output.description)
                     };
-                    (output.name.clone(), label)
+                    ChoiceOption {
+                        value: output.name.clone(),
+                        label,
+                    }
                 })
                 .collect();
             choice_list(outputs, current.as_deref(), &default_label(default), make)
@@ -264,11 +287,11 @@ fn on_off_list(
         .into()
 }
 
-/// A pick list of `(value, label)` options with niri's default first (it
-/// removes the setting). A current value missing from the options is kept,
-/// so the list never hides what the config says.
+/// A pick list of `options` with niri's default first (it removes the
+/// setting). A current value missing from the options is kept, so the list
+/// never hides what the config says.
 pub fn choice_list(
-    options: Vec<(String, String)>,
+    options: Vec<ChoiceOption>,
     current: Option<&str>,
     default: &str,
     make: impl Fn(Edit) -> Message + 'static,
@@ -277,10 +300,14 @@ pub fn choice_list(
         value: None,
         label: default.to_string(),
     }];
-    items.extend(options.into_iter().map(|(value, label)| Labeled {
-        value: Some(value),
-        label,
-    }));
+    items.extend(
+        options
+            .into_iter()
+            .map(|ChoiceOption { value, label }| Labeled {
+                value: Some(value),
+                label,
+            }),
+    );
     if let Some(value) = current
         && !items
             .iter()
@@ -582,11 +609,11 @@ fn screen(state: &App) -> Size {
         .displays
         .monitors
         .first()
-        .map_or(Size::new(1920.0, 1200.0), |(_, m)| {
+        .map_or(Size::new(1920.0, 1200.0), |display| {
             // screen sizes are far inside f32's range
             Size::new(
-                m.width.to_f32().unwrap_or(1920.0),
-                m.height.to_f32().unwrap_or(1200.0),
+                display.rect.width.to_f32().unwrap_or(1920.0),
+                display.rect.height.to_f32().unwrap_or(1200.0),
             )
         })
 }
@@ -624,10 +651,10 @@ fn size_list(
         Axis::Height => screen.height,
     };
     let mut list = column![SizesPreview::canvas(&entries, axis, screen)].spacing(6);
-    for (index, (name, value)) in entries.iter().enumerate() {
+    for (index, SizeEntry { name, value }) in entries.iter().enumerate() {
         let with = {
             let entries = entries.clone();
-            move |entry: (String, String)| {
+            move |entry: SizeEntry| {
                 let mut next = entries.clone();
                 if let Some(slot) = next.get_mut(index) {
                     *slot = entry;
@@ -664,14 +691,22 @@ fn size_list(
                     }
                     _ => value.clone(),
                 };
-                make(Edit::Draft(with((picked, converted))))
+                make(Edit::Draft(with(SizeEntry {
+                    name: picked,
+                    value: converted,
+                })))
             }
         };
         let typed = {
             let make = make.clone();
             let name = name.clone();
             let with = with.clone();
-            move |input: String| make(Edit::Draft(with((name.clone(), input))))
+            move |input: String| {
+                make(Edit::Draft(with(SizeEntry {
+                    name: name.clone(),
+                    value: input,
+                })))
+            }
         };
         let mut remaining = entries.clone();
         remaining.remove(index);
@@ -704,11 +739,17 @@ fn size_list(
         ("Full", "1"),
     ] {
         let mut next = entries.clone();
-        next.push(("proportion".to_string(), value.to_string()));
+        next.push(SizeEntry {
+            name: "proportion".to_string(),
+            value: value.to_string(),
+        });
         add = add.push(small(label, make(Edit::Draft(join_sizes(&next)))));
     }
     let mut fixed = entries.clone();
-    fixed.push(("fixed".to_string(), format!("{}", (extent / 2.0).round())));
+    fixed.push(SizeEntry {
+        name: "fixed".to_string(),
+        value: format!("{}", (extent / 2.0).round()),
+    });
     add = add.push(small("Fixed size", make(Edit::Draft(join_sizes(&fixed)))));
     if set {
         add = add
@@ -728,7 +769,7 @@ fn default_size(
         let entries = sizes(text);
         entries.first().map_or_else(
             || "The app decides".to_string(),
-            |(name, value)| size_label(name, value),
+            |entry| size_label(&entry.name, &entry.value),
         )
     };
     let presets = state
@@ -747,21 +788,30 @@ fn default_size(
                     .as_str(),
             )
         });
-    let mut options = vec![(String::new(), "The app decides".to_string())];
-    for (name, value) in presets {
+    let mut options = vec![ChoiceOption {
+        value: String::new(),
+        label: "The app decides".to_string(),
+    }];
+    for SizeEntry { name, value } in presets {
         let entry = format!("{name} {value}");
-        options.push((entry.clone(), size_label(&name, &value)));
+        options.push(ChoiceOption {
+            value: entry.clone(),
+            label: size_label(&name, &value),
+        });
     }
-    let mut items: Vec<(String, String)> = Vec::new();
-    for (value, label) in options {
-        if !items.iter().any(|(v, _)| *v == value) {
-            items.push((value, label));
+    let mut items: Vec<ChoiceOption> = Vec::new();
+    for option in options {
+        if !items.iter().any(|item| item.value == option.value) {
+            items.push(option);
         }
     }
     if let Some(value) = &current
-        && !items.iter().any(|(v, _)| v == value)
+        && !items.iter().any(|item| item.value == *value)
     {
-        items.push((value.to_string(), label_of(value)));
+        items.push(ChoiceOption {
+            value: value.to_string(),
+            label: label_of(value),
+        });
     }
     choice_list(items, current, &default_label(&label_of(default)), make)
 }
@@ -1044,18 +1094,19 @@ pub struct SizesPreview {
 }
 
 impl SizesPreview {
-    fn canvas(
-        entries: &[(String, String)],
-        axis: Axis,
-        screen: Size,
-    ) -> canvas::Canvas<Self, Message> {
+    fn canvas(entries: &[SizeEntry], axis: Axis, screen: Size) -> canvas::Canvas<Self, Message> {
         let extent = match axis {
             Axis::Width => screen.width,
             Axis::Height => screen.height,
         };
         let bars = entries
             .iter()
-            .map(|(name, value)| (fraction(name, value, extent), size_label(name, value)))
+            .map(|entry| {
+                (
+                    fraction(&entry.name, &entry.value, extent),
+                    size_label(&entry.name, &entry.value),
+                )
+            })
             .collect();
         let height = match axis {
             Axis::Width => 24.0f32.mul_add(entries.len().max(1) as f32, 16.0),

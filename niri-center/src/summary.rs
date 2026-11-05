@@ -153,7 +153,7 @@ fn value_text(kind: Kind, value: &str) -> String {
     match kind {
         Kind::Sizes { .. } => sizes(value)
             .iter()
-            .map(|(name, size)| size_label(name, size))
+            .map(|entry| size_label(&entry.name, &entry.value))
             .collect::<Vec<_>>()
             .join(", "),
         Kind::Choice(_)

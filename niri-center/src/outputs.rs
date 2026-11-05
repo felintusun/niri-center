@@ -16,6 +16,13 @@ pub struct MonitorInfo {
     pub height: f64,
 }
 
+/// A display on the arrangement: its name and where it is.
+#[derive(Debug, Clone)]
+pub struct PlacedDisplay {
+    pub name: String,
+    pub rect: MonitorInfo,
+}
+
 /// One mode a display supports, as niri reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mode {
@@ -126,17 +133,22 @@ pub fn modes(modes: &[RawMode]) -> Vec<Mode> {
 }
 
 /// The rectangles the arrangement canvas draws, as niri runs them.
-pub fn rects(outputs: &[OutputInfo]) -> Vec<(String, MonitorInfo)> {
+pub fn rects(outputs: &[OutputInfo]) -> Vec<PlacedDisplay> {
     outputs
         .iter()
-        .filter_map(|output| output.rect.map(|rect| (output.name.clone(), rect)))
+        .filter_map(|output| {
+            output.rect.map(|rect| PlacedDisplay {
+                name: output.name.clone(),
+                rect,
+            })
+        })
         .collect()
 }
 
 /// The rectangles with the staged config applied: a new mode, scale,
 /// rotation or position changes the logical size the way niri computes it,
 /// and a display turned off drops out.
-pub fn staged(outputs: &[OutputInfo], store: &Store) -> Vec<(String, MonitorInfo)> {
+pub fn staged(outputs: &[OutputInfo], store: &Store) -> Vec<PlacedDisplay> {
     let mut out = Vec::new();
     for output in outputs {
         let chain = [Block::with_arg("output", &output.name)];
@@ -191,15 +203,15 @@ pub fn staged(outputs: &[OutputInfo], store: &Store) -> Vec<(String, MonitorInfo
             };
             (prop("x"), prop("y"))
         });
-        out.push((
-            output.name.clone(),
-            MonitorInfo {
+        out.push(PlacedDisplay {
+            name: output.name.clone(),
+            rect: MonitorInfo {
                 x: position.and_then(|place| place.0).unwrap_or(running.x),
                 y: position.and_then(|place| place.1).unwrap_or(running.y),
                 width,
                 height,
             },
-        ));
+        });
     }
     out
 }
@@ -238,7 +250,7 @@ pub fn type_position(
 ) -> Result<(), String> {
     let key = DraftKey::Position(name.to_string(), coordinate);
     let current = staged(outputs, store);
-    let Some((_, rect)) = current.iter().find(|(n, _)| n == name) else {
+    let Some(display) = current.iter().find(|display| display.name == name) else {
         drafts.keep(&key, typed, None);
         return Ok(());
     };
@@ -252,7 +264,7 @@ pub fn type_position(
     };
     drafts.keep(&key, typed, None);
     // the other coordinate as niri reports it: always whole pixels
-    let (Some(rect_x), Some(rect_y)) = (pixels(rect.x), pixels(rect.y)) else {
+    let (Some(rect_x), Some(rect_y)) = (pixels(display.rect.x), pixels(display.rect.y)) else {
         return Ok(());
     };
     let (position_x, position_y) = match coordinate {
@@ -266,7 +278,7 @@ pub fn type_position(
 
 /// Pairs that overlap, and displays no other display touches (the pointer
 /// cannot reach them), for the hint above the canvas.
-pub fn problems(rects: &[(String, MonitorInfo)]) -> (Vec<(String, String)>, Vec<String>) {
+pub fn problems(rects: &[PlacedDisplay]) -> (Vec<(String, String)>, Vec<String>) {
     let overlaps = |first: &MonitorInfo, second: &MonitorInfo| {
         first.x < second.x + second.width
             && second.x < first.x + first.width
@@ -286,18 +298,19 @@ pub fn problems(rects: &[(String, MonitorInfo)]) -> (Vec<(String, String)>, Vec<
     };
     let mut overlapping = Vec::new();
     let mut alone = Vec::new();
-    for (place, (name, rect)) in rects.iter().enumerate() {
-        for (other, second) in rects.get(place + 1..).unwrap_or_default() {
-            if overlaps(rect, second) {
-                overlapping.push((name.clone(), other.clone()));
+    for (place, display) in rects.iter().enumerate() {
+        for other in rects.get(place + 1..).unwrap_or_default() {
+            if overlaps(&display.rect, &other.rect) {
+                overlapping.push((display.name.clone(), other.name.clone()));
             }
         }
         if rects.len() > 1
-            && !rects.iter().any(|(other, second)| {
-                other != name && (touches(rect, second) || overlaps(rect, second))
+            && !rects.iter().any(|other| {
+                other.name != display.name
+                    && (touches(&display.rect, &other.rect) || overlaps(&display.rect, &other.rect))
             })
         {
-            alone.push(name.clone());
+            alone.push(display.name.clone());
         }
     }
     (overlapping, alone)
@@ -307,11 +320,11 @@ pub fn problems(rects: &[(String, MonitorInfo)]) -> (Vec<(String, String)>, Vec<
 /// another display, top or left edges lined up when they are close, so a
 /// drag ends edge to edge instead of a few pixels apart or overlapping.
 /// `None` for a place no display can be at (beyond any integer).
-pub fn snap(name: &str, x: f64, y: f64, rects: &[(String, MonitorInfo)]) -> Option<(i64, i64)> {
-    let Some((_, moved)) = rects.iter().find(|(candidate, _)| candidate == name) else {
+pub fn snap(name: &str, x: f64, y: f64, rects: &[PlacedDisplay]) -> Option<(i64, i64)> {
+    let Some(moved) = rects.iter().find(|display| display.name == name) else {
         return Some((pixels(x)?, pixels(y)?));
     };
-    let (moved_width, moved_height) = (moved.width, moved.height);
+    let (moved_width, moved_height) = (moved.rect.width, moved.rect.height);
     // lined up when within this much
     let near = 64.0;
     let align = |value: f64, edges: [f64; 2]| {
@@ -321,19 +334,20 @@ pub fn snap(name: &str, x: f64, y: f64, rects: &[(String, MonitorInfo)]) -> Opti
             .unwrap_or(value)
     };
     let mut best: Option<(f64, f64, f64)> = None;
-    for (other_name, o) in rects {
-        if other_name == name {
+    for display in rects {
+        if display.name == name {
             continue;
         }
-        let beside_y = align(y, [o.y, o.y + o.height - moved_height])
-            .clamp(o.y - moved_height + 1.0, o.y + o.height - 1.0);
-        let beside_x = align(x, [o.x, o.x + o.width - moved_width])
-            .clamp(o.x - moved_width + 1.0, o.x + o.width - 1.0);
+        let other = display.rect;
+        let beside_y = align(y, [other.y, other.y + other.height - moved_height])
+            .clamp(other.y - moved_height + 1.0, other.y + other.height - 1.0);
+        let beside_x = align(x, [other.x, other.x + other.width - moved_width])
+            .clamp(other.x - moved_width + 1.0, other.x + other.width - 1.0);
         for (cx, cy) in [
-            (o.x - moved_width, beside_y),
-            (o.x + o.width, beside_y),
-            (beside_x, o.y - moved_height),
-            (beside_x, o.y + o.height),
+            (other.x - moved_width, beside_y),
+            (other.x + other.width, beside_y),
+            (beside_x, other.y - moved_height),
+            (beside_x, other.y + other.height),
         ] {
             let distance = (cx - x).hypot(cy - y);
             if best.is_none_or(|(_, _, d)| distance < d) {
@@ -355,30 +369,33 @@ fn pixels(value: f64) -> Option<i64> {
 mod tests {
     use super::*;
 
-    fn rect(x: f64, y: f64, width: f64, height: f64) -> MonitorInfo {
-        MonitorInfo {
-            x,
-            y,
-            width,
-            height,
+    fn placed(name: &str, x: f64, y: f64, width: f64, height: f64) -> PlacedDisplay {
+        PlacedDisplay {
+            name: name.to_string(),
+            rect: MonitorInfo {
+                x,
+                y,
+                width,
+                height,
+            },
         }
     }
 
     #[test]
     fn overlapping_and_unreachable_displays_are_found() {
         let side_by_side = [
-            ("eDP-1".to_string(), rect(0.0, 0.0, 1920.0, 1200.0)),
-            ("DP-1".to_string(), rect(1920.0, 0.0, 2560.0, 1440.0)),
+            placed("eDP-1", 0.0, 0.0, 1920.0, 1200.0),
+            placed("DP-1", 1920.0, 0.0, 2560.0, 1440.0),
         ];
         assert_eq!(problems(&side_by_side), (vec![], vec![]));
         let overlapping = [
-            ("eDP-1".to_string(), rect(0.0, 0.0, 1920.0, 1200.0)),
-            ("DP-1".to_string(), rect(1800.0, 0.0, 2560.0, 1440.0)),
+            placed("eDP-1", 0.0, 0.0, 1920.0, 1200.0),
+            placed("DP-1", 1800.0, 0.0, 2560.0, 1440.0),
         ];
         assert_eq!(problems(&overlapping).0.len(), 1);
         let apart = [
-            ("eDP-1".to_string(), rect(0.0, 0.0, 1920.0, 1200.0)),
-            ("DP-1".to_string(), rect(2000.0, 0.0, 2560.0, 1440.0)),
+            placed("eDP-1", 0.0, 0.0, 1920.0, 1200.0),
+            placed("DP-1", 2000.0, 0.0, 2560.0, 1440.0),
         ];
         assert_eq!(problems(&apart).1, ["eDP-1", "DP-1"]);
     }
@@ -396,20 +413,23 @@ mod tests {
 mod snap_tests {
     use super::*;
 
-    fn rect(x: f64, y: f64, width: f64, height: f64) -> MonitorInfo {
-        MonitorInfo {
-            x,
-            y,
-            width,
-            height,
+    fn placed(name: &str, x: f64, y: f64, width: f64, height: f64) -> PlacedDisplay {
+        PlacedDisplay {
+            name: name.to_string(),
+            rect: MonitorInfo {
+                x,
+                y,
+                width,
+                height,
+            },
         }
     }
 
     #[test]
     fn a_drop_ends_edge_to_edge_even_left_of_zero() {
         let rects = vec![
-            ("eDP-1".to_string(), rect(0.0, 0.0, 1707.0, 1067.0)),
-            ("DP-1".to_string(), rect(1707.0, 0.0, 2560.0, 1440.0)),
+            placed("eDP-1", 0.0, 0.0, 1707.0, 1067.0),
+            placed("DP-1", 1707.0, 0.0, 2560.0, 1440.0),
         ];
         // dropped roughly left of the laptop: snaps to its left edge, tops lined up
         assert_eq!(snap("DP-1", -2500.0, 30.0, &rects), Some((-2560, 0)));

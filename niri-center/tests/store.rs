@@ -1537,3 +1537,37 @@ fn the_xkb_block_is_read_as_niri_builds_its_keymap() {
     assert_eq!(xkb.options, "ctrl:nocaps");
     assert_eq!(xkb.file, None);
 }
+
+#[test]
+fn snapshots_in_memory_stay_apart_by_name() {
+    let main = std::path::PathBuf::from("/config/config.kdl");
+    let mut disk =
+        niri_center::disk::Disk::memory([(main.clone(), "layout {\n    gaps 8\n}\n".to_string())]);
+    let fresh = |disk: &niri_center::disk::Disk| disk.load(&main).unwrap().store;
+    let gaps_in = |disk: &niri_center::disk::Disk, name: &str| {
+        let mut store = fresh(disk);
+        stage_snapshot(disk, &mut store, name).unwrap();
+        store.layout_gaps()
+    };
+    let keep = |disk: &mut niri_center::disk::Disk, name: &str, gaps: f64| {
+        let mut store = disk.load(&main).unwrap().store;
+        store.set_layout_gaps(gaps).unwrap();
+        disk.create_snapshot(name, store.snapshot_files()).unwrap();
+    };
+
+    keep(&mut disk, "narrow", 16.0);
+    keep(&mut disk, "wide", 32.0);
+    assert_eq!(disk.snapshots(), ["narrow", "wide"]);
+    assert_eq!(gaps_in(&disk, "narrow"), Some(16.0));
+    assert_eq!(gaps_in(&disk, "wide"), Some(32.0));
+
+    // kept again under its name, it replaces itself alone
+    keep(&mut disk, "wide", 64.0);
+    assert_eq!(disk.snapshots(), ["narrow", "wide"]);
+    assert_eq!(gaps_in(&disk, "narrow"), Some(16.0));
+    assert_eq!(gaps_in(&disk, "wide"), Some(64.0));
+
+    disk.delete_snapshot("narrow").unwrap();
+    assert_eq!(disk.snapshots(), ["wide"]);
+    assert_eq!(gaps_in(&disk, "wide"), Some(64.0));
+}

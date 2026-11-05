@@ -99,7 +99,7 @@ and .rpm find their dependencies themselves.
   enum (`Setting`, `OutputSetting`, `Animation`, `Curve`, `Modifier`,
   `RuleProperty`, `MatchName`, `KnownApp`, `DraftKey`); text people read and
   niri's own words written into the file stay strings. Column and window
-  sizes stay `(name, value)` text: a number type would not keep what was
+  sizes stay text (`SizeEntry`): a number type would not keep what was
   written (`1.0`, `0.50`), and the edit compares entries as written.
 - Code that needs no iced type goes in the library, where it is tested
   without a window.

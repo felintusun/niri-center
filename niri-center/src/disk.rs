@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use crate::history::FileChange;
 use crate::session::SaveWhen;
+use crate::snapshot::SnapshotFile;
 use crate::store::{Store, StoreError};
 use crate::xdg::Places;
 use crate::{backup, snapshot, validate};
@@ -101,6 +102,13 @@ impl Folders {
     }
 }
 
+/// A snapshot kept in memory.
+#[derive(Debug, Clone)]
+struct MemorySnapshot {
+    name: String,
+    files: Vec<SnapshotFile>,
+}
+
 /// The browser demo's and the tests' disk: files, backups and snapshots
 /// kept in memory.
 #[derive(Debug, Clone, Default)]
@@ -108,8 +116,7 @@ pub struct Memory {
     files: BTreeMap<PathBuf, String>,
     /// Each backup: the file's name, when it was taken, its text.
     backups: Vec<(String, u128, String)>,
-    /// Each snapshot: its name and its files by name.
-    snapshots: Vec<(String, Vec<(String, String)>)>,
+    snapshots: Vec<MemorySnapshot>,
 }
 
 /// Where the files are.
@@ -318,16 +325,16 @@ impl Disk {
             Backend::Memory(memory) => memory
                 .snapshots
                 .iter()
-                .map(|(name, _)| name.clone())
+                .map(|snapshot| snapshot.name.clone())
                 .collect(),
         }
     }
 
-    /// Keep `files` (each file's name and text) as the snapshot `name`.
+    /// Keep `files` as the snapshot `name`.
     pub fn create_snapshot(
         &mut self,
         name: &str,
-        files: Vec<(String, String)>,
+        files: Vec<SnapshotFile>,
     ) -> Result<(), DiskError> {
         match &mut self.backend {
             Backend::Files(folders) => snapshot::create(&folders.snapshots, name, &files, "")
@@ -337,15 +344,18 @@ impl Disk {
                     source,
                 }),
             Backend::Memory(memory) => {
-                memory.snapshots.retain(|(known, _)| known != name);
-                memory.snapshots.push((name.to_string(), files));
+                memory.snapshots.retain(|snapshot| snapshot.name != name);
+                memory.snapshots.push(MemorySnapshot {
+                    name: name.to_string(),
+                    files,
+                });
                 Ok(())
             }
         }
     }
 
-    /// The files of the snapshot `name`, each by name with its text.
-    pub fn snapshot(&self, name: &str) -> Result<Vec<(String, String)>, DiskError> {
+    /// The files of the snapshot `name`.
+    pub fn snapshot(&self, name: &str) -> Result<Vec<SnapshotFile>, DiskError> {
         match &self.backend {
             Backend::Files(folders) => snapshot::load(&folders.snapshots, name)
                 .map(|loaded| loaded.files)
@@ -356,8 +366,8 @@ impl Disk {
             Backend::Memory(memory) => memory
                 .snapshots
                 .iter()
-                .find(|(known, _)| known == name)
-                .map(|(_, files)| files.clone())
+                .find(|snapshot| snapshot.name == name)
+                .map(|snapshot| snapshot.files.clone())
                 .ok_or_else(|| DiskError::Snapshot {
                     name: name.to_string(),
                     source: io::Error::from(io::ErrorKind::NotFound),
@@ -374,7 +384,7 @@ impl Disk {
                 })
             }
             Backend::Memory(memory) => {
-                memory.snapshots.retain(|(known, _)| known != name);
+                memory.snapshots.retain(|snapshot| snapshot.name != name);
                 Ok(())
             }
         }

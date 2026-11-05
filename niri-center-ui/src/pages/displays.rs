@@ -4,12 +4,12 @@
 use iced::widget::{button, column, container, row, space, text, text_input};
 use iced::{Alignment, Length, Task};
 use niri_center::niri;
-use niri_center::outputs::{self, MonitorInfo};
+use niri_center::outputs::{self, PlacedDisplay};
 use niri_center::settings::{self, Coordinate, DraftKey, Edit, OutputSetting};
 use num_traits::ToPrimitive;
 
 use crate::app::{App, error, info, room};
-use crate::controls::{self, small};
+use crate::controls::{self, ChoiceOption, small};
 use crate::message::Message as AppMessage;
 use crate::monitors::DroppedMonitor;
 use crate::rows;
@@ -20,7 +20,7 @@ use crate::{El, monitors, theme};
 pub struct State {
     /// The display whose settings show; `None` is the first.
     pub selected: Option<String>,
-    pub monitors: Vec<(String, MonitorInfo)>,
+    pub monitors: Vec<PlacedDisplay>,
     /// Why niri could not say which displays there are.
     pub error: Option<String>,
 }
@@ -65,14 +65,14 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
                     state.status = info(format!("{} moved to {x}, {y}.", dropped.name));
                     // mirror the move so the canvas shows it now; a refused
                     // move snaps back
-                    if let Some((_, m)) = state
+                    if let Some(display) = state
                         .displays
                         .monitors
                         .iter_mut()
-                        .find(|(n, _)| *n == dropped.name)
+                        .find(|display| display.name == dropped.name)
                     {
-                        m.x = x as f64;
-                        m.y = y as f64;
+                        display.rect.x = x as f64;
+                        display.rect.y = y as f64;
                     }
                 }
                 (Ok(()), None) => {}
@@ -144,9 +144,12 @@ pub fn page(state: &App) -> El<'_> {
     for output in &state.outputs {
         let size = rects
             .iter()
-            .find(|(name, _)| *name == output.name)
-            .map_or_else(String::new, |(_, rect)| {
-                format!(", {} × {} after scaling", rect.width, rect.height)
+            .find(|display| display.name == output.name)
+            .map_or_else(String::new, |display| {
+                format!(
+                    ", {} × {} after scaling",
+                    display.rect.width, display.rect.height
+                )
             });
         let name = output.title().to_string();
         list.push(
@@ -208,12 +211,17 @@ pub fn page(state: &App) -> El<'_> {
 fn position_row(
     state: &App,
     output: &niri_center::outputs::OutputInfo,
-    rects: &[(String, niri_center::outputs::MonitorInfo)],
+    rects: &[PlacedDisplay],
 ) -> El<'static> {
     let (position_x, position_y) = rects
         .iter()
-        .find(|(name, _)| *name == output.name)
-        .and_then(|(_, rect)| Some((rect.x.round().to_i64()?, rect.y.round().to_i64()?)))
+        .find(|display| display.name == output.name)
+        .and_then(|display| {
+            Some((
+                display.rect.x.round().to_i64()?,
+                display.rect.y.round().to_i64()?,
+            ))
+        })
         .unwrap_or((0, 0));
     let field = |coordinate: Coordinate, value: i64| {
         let key = DraftKey::Position(output.name.clone(), coordinate);
@@ -310,7 +318,7 @@ pub fn trial(state: &App) -> Option<El<'_>> {
 fn output_rows<'app>(
     state: &'app App,
     output: &niri_center::outputs::OutputInfo,
-    rects: &[(String, niri_center::outputs::MonitorInfo)],
+    rects: &[PlacedDisplay],
     width: f32,
 ) -> El<'app> {
     let Some(store) = state.store() else {
@@ -337,7 +345,10 @@ fn output_rows<'app>(
             output
                 .modes
                 .iter()
-                .map(|mode| (mode.value.clone(), mode.choice.clone()))
+                .map(|mode| ChoiceOption {
+                    value: mode.value.clone(),
+                    label: mode.choice.clone(),
+                })
                 .collect(),
             store.setting(&chain, "mode").as_deref(),
             &preferred.map_or_else(
@@ -377,7 +388,10 @@ fn output_rows<'app>(
                     .iter()
                     .map(|scale| {
                         let factor = scale.parse::<f64>().unwrap_or(1.0);
-                        ((*scale).to_string(), percent(factor))
+                        ChoiceOption {
+                            value: (*scale).to_string(),
+                            label: percent(factor),
+                        }
                     })
                     .collect(),
                 picked.as_deref().or(current.as_deref()),
@@ -398,11 +412,11 @@ fn output_rows<'app>(
     };
     let desktop = rects
         .iter()
-        .find(|(name, _)| *name == output.name)
-        .map_or_else(String::new, |(_, rect)| {
+        .find(|display| display.name == output.name)
+        .map_or_else(String::new, |display| {
             format!(
                 "The desktop on it is {} × {} logical pixels.",
-                rect.width, rect.height
+                display.rect.width, display.rect.height
             )
         });
     let mut rows = vec![

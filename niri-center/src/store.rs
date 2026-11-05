@@ -23,10 +23,11 @@ use crate::disk::SaveJob;
 use crate::history::FileChange;
 use crate::include::{self, IncludedFile};
 use crate::kdl::{Document, EditError, Node, Span, active_named, parse_document, quoted};
+use crate::snapshot::SnapshotFile;
 
 mod engine;
 use engine::indentation;
-pub use engine::{Block, Override};
+pub use engine::{Block, Override, SizeEntry};
 
 const LAYOUT: [Block; 1] = [Block::named("layout")];
 const TOUCHPAD: [Block; 2] = [Block::named("input"), Block::named("touchpad")];
@@ -1208,22 +1209,25 @@ impl Store {
 
     /// Every loaded file by name, with the text it has now (edits not
     /// saved yet included): what a snapshot keeps.
-    pub fn snapshot_files(&self) -> Vec<(String, String)> {
+    pub fn snapshot_files(&self) -> Vec<SnapshotFile> {
         self.loaded()
             .map(|file| {
                 let name = short_name(file.path).unwrap_or("config.kdl");
-                (name.to_string(), file.doc.text().into_owned())
+                SnapshotFile {
+                    name: name.to_string(),
+                    text: file.doc.text().into_owned(),
+                }
             })
             .collect()
     }
 
     /// Stage a snapshot's `files` over the loaded files they match. A
     /// snapshot may hold a file the config no longer loads.
-    pub fn stage_snapshot(&mut self, files: &[(String, String)]) -> Result<(), StoreError> {
+    pub fn stage_snapshot(&mut self, files: &[SnapshotFile]) -> Result<(), StoreError> {
         let mut staged = 0;
-        for (name, content) in files {
-            if let Some(target) = self.target_named(name) {
-                self.stage_content(target, content)?;
+        for file in files {
+            if let Some(target) = self.target_named(&file.name) {
+                self.stage_content(target, &file.text)?;
                 staged += 1;
             }
         }
