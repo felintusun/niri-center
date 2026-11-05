@@ -6,6 +6,7 @@ use iced::{Alignment, Length, Task};
 use niri_center::niri;
 use niri_center::outputs::{self, MonitorInfo};
 use niri_center::settings::{self, Coordinate, DraftKey, Edit, OutputSetting};
+use niri_center::store::Store;
 use num_traits::ToPrimitive;
 
 use crate::app::{App, error, info, room};
@@ -95,13 +96,10 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
 
 /// The arrangement and the list, with a display's settings beside them
 /// when there is room.
-pub fn page(state: &App) -> El<'_> {
+pub fn page<'app>(state: &'app App, store: &Store) -> El<'app> {
     let width = state.content_width();
     let beside = width >= room::DISPLAY_BESIDE_LIST;
-    let rects = state.session.store.as_ref().map_or_else(
-        || state.displays.monitors.clone(),
-        |store| niri_center::outputs::staged(&state.outputs, store),
-    );
+    let rects = niri_center::outputs::staged(&state.outputs, store);
     let mut overview = column![].spacing(12).width(Length::Fill);
     if let Some(failure) = &state.displays.error {
         overview = overview.push(
@@ -188,7 +186,7 @@ pub fn page(state: &App) -> El<'_> {
             } else {
                 width
             };
-            output_rows(state, output, &rects, width)
+            output_rows(state, store, output, &rects, width)
         },
     );
     if beside {
@@ -309,17 +307,16 @@ pub fn trial(state: &App) -> Option<El<'_>> {
 /// One display's settings, laid out for `width`.
 fn output_rows<'app>(
     state: &'app App,
+    store: &Store,
     output: &niri_center::outputs::OutputInfo,
     rects: &[(String, niri_center::outputs::MonitorInfo)],
     width: f32,
 ) -> El<'app> {
-    let Some(store) = state.store() else {
-        return space().into();
-    };
     let chain = settings::output_chain(&output.name);
     let row = |setting: OutputSetting, help: Option<String>, notes, control| {
         rows::output_row(
             state,
+            store,
             &output.name,
             setting,
             rows::Extra {

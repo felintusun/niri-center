@@ -82,7 +82,7 @@ pub fn update(state: &mut App, message: Message) -> Task<AppMessage> {
 }
 
 pub fn page<'app>(state: &'app App, store: &Store) -> El<'app> {
-    let col = column![rows::sections(state, Page::Animations)].spacing(24);
+    let col = column![rows::sections(state, store, Page::Animations)].spacing(24);
     let animation = state.animation.animation;
     let name = animation.name();
     let configured = store.animation_names();

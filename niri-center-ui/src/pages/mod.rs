@@ -29,10 +29,10 @@ pub fn page(state: &App) -> Column<'_, Message> {
         (Page::Keybinds, Some(store)) => keybinds::page(state, store),
         (Page::Rules, Some(_)) => rules::page(state),
         (Page::Startup, Some(store)) => startup::page(state, store),
-        (Page::Displays, Some(_)) => displays::page(state),
+        (Page::Displays, Some(store)) => displays::page(state, store),
         (Page::Environment, Some(store)) => column![
             environment::view(state, store),
-            rows::sections(state, state.page)
+            rows::sections(state, store, state.page)
         ]
         .spacing(16)
         .into(),
@@ -44,12 +44,12 @@ pub fn page(state: &App) -> Column<'_, Message> {
             | Page::Gestures
             | Page::Cursor
             | Page::Screenshots,
-            Some(_),
-        ) => rows::sections(state, state.page),
+            Some(store),
+        ) => rows::sections(state, store, state.page),
         (Page::Animations, Some(store)) => animations::page(state, store),
         (Page::History, Some(_)) => crate::history::page(state),
         (Page::Files, Some(store)) => files::page(state, store),
-        (Page::Source, Some(_)) => crate::source::whole(state),
+        (Page::Source, Some(store)) => crate::source::whole(state, store),
     };
     column![heading(state), body]
         .spacing(16)
@@ -131,7 +131,7 @@ fn tag<'view>(label: impl text::IntoFragment<'view>) -> El<'view> {
 }
 
 fn include_warnings(state: &App) -> Option<El<'_>> {
-    let store = state.session.store.as_ref()?;
+    let store = state.store()?;
     let warnings = store.include_warnings();
     if warnings.is_empty() {
         return None;

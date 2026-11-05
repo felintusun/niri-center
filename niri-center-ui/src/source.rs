@@ -8,6 +8,7 @@
 use iced::widget::{button, column, container, row, scrollable, space, text, tooltip};
 use iced::{Alignment, Length};
 use niri_center::diff::{self, Line};
+use niri_center::store::Store;
 
 use crate::highlight::Mark;
 use crate::icons::Icon;
@@ -36,7 +37,7 @@ fn changed_lines(state: &App, path: &std::path::Path, now: &str) -> Vec<usize> {
 
 /// The source column, or its fold strip.
 pub fn view(state: &App) -> El<'_> {
-    let Some(store) = &state.session.store else {
+    let Some(store) = state.store() else {
         return space().into();
     };
     let Some(excerpt) = state.page.excerpt(store) else {
@@ -150,10 +151,7 @@ pub fn section_id(index: usize) -> String {
 /// config.kdl, then each file it includes, in the order niri reads them,
 /// each under a heading that folds it. The file names stay above the code
 /// and jump to their file. It follows every save, the latest change marked.
-pub fn whole(state: &App) -> El<'_> {
-    let Some(store) = &state.session.store else {
-        return space().into();
-    };
+pub fn whole<'app>(state: &'app App, store: &'app Store) -> El<'app> {
     let colors = state.colors();
     let paths: Vec<&std::path::Path> = std::iter::once(store.path())
         .chain(

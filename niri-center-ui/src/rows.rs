@@ -17,9 +17,9 @@ use crate::message::Message;
 use crate::{El, controls, theme};
 
 /// Every registry section of `page`, as grouped rows.
-pub fn sections(state: &App, page: Page) -> El<'_> {
+pub fn sections<'app>(state: &'app App, store: &Store, page: Page) -> El<'app> {
     let width = state.content_width();
-    let mut groups: Vec<(Option<Section>, Vec<El<'_>>)> = Vec::new();
+    let mut groups: Vec<(Option<Section>, Vec<El<'app>>)> = Vec::new();
     let mut previous_parent = None;
     for &setting in Setting::ALL
         .iter()
@@ -29,7 +29,7 @@ pub fn sections(state: &App, page: Page) -> El<'_> {
         // rows that depend on the same setting say so once, on the first
         let explain_parent = spec.requires != previous_parent;
         previous_parent = spec.requires;
-        let row = setting_row(state, setting, width, explain_parent);
+        let row = setting_row(state, store, setting, width, explain_parent);
         match groups.last_mut() {
             Some((section, rows)) if *section == spec.section => rows.push(row),
             Some(_) | None => groups.push((spec.section, vec![row])),
@@ -73,10 +73,13 @@ pub const SEMIBOLD: Font = Font {
 };
 
 /// `explain_parent`: say which setting this one depends on, when that is off.
-fn setting_row(state: &App, id: Setting, width: f32, explain_parent: bool) -> El<'_> {
-    let Some(store) = state.store() else {
-        return iced::widget::space().into();
-    };
+fn setting_row<'app>(
+    state: &'app App,
+    store: &Store,
+    id: Setting,
+    width: f32,
+    explain_parent: bool,
+) -> El<'app> {
     let setting = id.spec();
     let off_parent = setting
         .requires
@@ -84,6 +87,7 @@ fn setting_row(state: &App, id: Setting, width: f32, explain_parent: bool) -> El
         .filter(|parent| !parent.is_on(store));
     spec_row(
         state,
+        store,
         setting,
         RowParts {
             chain: setting.chain,
@@ -111,15 +115,13 @@ fn setting_row(state: &App, id: Setting, width: f32, explain_parent: bool) -> El
 /// modes.
 pub fn output_row<'app>(
     state: &'app App,
+    store: &Store,
     output: &str,
     id: OutputSetting,
     extra: Extra<'app>,
     width: f32,
 ) -> El<'app> {
     let setting = id.spec();
-    let Some(store) = state.store() else {
-        return iced::widget::space().into();
-    };
     let Extra {
         help,
         notes: more,
@@ -132,6 +134,7 @@ pub fn output_row<'app>(
     let name = output.to_string();
     spec_row(
         state,
+        store,
         setting,
         RowParts {
             chain: &chain,
@@ -177,13 +180,11 @@ struct RowParts<'chain, 'view> {
 /// latest change, and a reset to niri's default.
 fn spec_row<'app>(
     state: &'app App,
+    store: &Store,
     setting: &'static Spec,
     mut parts: RowParts<'_, 'app>,
     make: impl Fn(Edit) -> Message + Clone + 'static,
 ) -> El<'app> {
-    let Some(store) = state.store() else {
-        return iced::widget::space().into();
-    };
     let read_in = |store: &Store| read(store, parts.chain, &setting.child, setting.kind);
     let reading = read_in(store);
     parts.set = reading != unset(setting.kind);

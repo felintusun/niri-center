@@ -19,7 +19,7 @@ use crate::{El, highlight, theme};
 pub fn panel(state: &App) -> Option<El<'_>> {
     let health = state.session.health()?;
     let (details, typo) = (&health.details, &health.typo);
-    let file = state.session.store.as_ref().map_or_else(
+    let file = state.store().map_or_else(
         || "the config".to_string(),
         |store| store.file_label(store.path()),
     );

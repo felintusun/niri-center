@@ -652,7 +652,7 @@ fn banner(state: &App) -> Option<El<'_>> {
         }
         return Some(strip(content, |colors| colors.error));
     }
-    if let Some(store) = &state.session.store
+    if let Some(store) = state.store()
         && state
             .session
             .read_only
@@ -890,7 +890,7 @@ fn help_card(state: &App) -> El<'_> {
 
 /// What is not saved yet, file by file, with Save: for saving on request.
 fn review_card(state: &App) -> El<'_> {
-    let Some(store) = &state.session.store else {
+    let Some(store) = state.store() else {
         return space().into();
     };
     let colors = state.colors();
